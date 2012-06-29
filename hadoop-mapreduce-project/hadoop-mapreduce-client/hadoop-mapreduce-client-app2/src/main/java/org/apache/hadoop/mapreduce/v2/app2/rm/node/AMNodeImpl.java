@@ -35,13 +35,15 @@ public class AMNodeImpl implements AMNode, EventHandler<AMNodeEvent> {
   private final List<ContainerId> contaienrs = new LinkedList<ContainerId>();
 
   private static boolean stateMachineInited = false;
-  private static final StateMachineFactory<AMNodeImpl, AMNodeState, AMNodeEventType, AMNodeEvent> stateMachineFactory = new StateMachineFactory<AMNodeImpl, AMNodeState, AMNodeEventType, AMNodeEvent>(
+  private static final StateMachineFactory
+      <AMNodeImpl, AMNodeState, AMNodeEventType, AMNodeEvent> 
+      stateMachineFactory = 
+      new StateMachineFactory<AMNodeImpl, AMNodeState, AMNodeEventType, AMNodeEvent>(
       AMNodeState.ACTIVE);
 
   private final StateMachine<AMNodeState, AMNodeEventType, AMNodeEvent> stateMachine;
 
   private void initStateMachineFactory() {
-
     stateMachineFactory
         // Transitions from ACTIVE state.
         .addTransition(AMNodeState.ACTIVE, AMNodeState.ACTIVE,

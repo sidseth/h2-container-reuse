@@ -19,17 +19,29 @@
 package org.apache.hadoop.mapreduce.v2.api.records;
 
 public enum TaskAttemptState {
+  // States in new implementation.
   NEW, 
-  UNASSIGNED, 
-  ASSIGNED, 
-  RUNNING, 
+  START_WAIT, 
+  RUNNING,
   COMMIT_PENDING, 
-  SUCCESS_CONTAINER_CLEANUP, 
-  SUCCEEDED, 
-  FAIL_CONTAINER_CLEANUP, 
-  FAIL_TASK_CLEANUP, 
-  FAILED, 
-  KILL_CONTAINER_CLEANUP, 
-  KILL_TASK_CLEANUP, 
-  KILLED
+  KILL_IN_PROGRESS, 
+  FAIL_IN_PROGRESS, 
+  KILLED,
+  FAILED,
+  SUCCEEDED,
+  
+  // States in old implementation.
+       //  NEW, 
+//  UNASSIGNED, 
+//  ASSIGNED, 
+       //  RUNNING, 
+       //  COMMIT_PENDING, 
+//  SUCCESS_CONTAINER_CLEANUP, 
+       //  SUCCEEDED, 
+//  FAIL_CONTAINER_CLEANUP, 
+//  FAIL_TASK_CLEANUP, 
+       //  FAILED, 
+//  KILL_CONTAINER_CLEANUP, 
+//  KILL_TASK_CLEANUP, 
+       //  KILLED
 }

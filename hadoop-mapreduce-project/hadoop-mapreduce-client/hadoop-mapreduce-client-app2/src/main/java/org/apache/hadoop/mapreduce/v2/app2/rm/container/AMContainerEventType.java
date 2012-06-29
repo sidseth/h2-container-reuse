@@ -11,6 +11,7 @@ public enum AMContainerEventType {
   C_LAUNCH_FAILED,
   
   //Producer: TAL: PULL_TA is a sync call.
+  C_PULL_TA,
   
   //Producer: Scheduler via TA
   C_TA_SUCCEEDED,
@@ -24,7 +25,7 @@ public enum AMContainerEventType {
   C_STOP_REQUEST,
   
   //Producer: NMCommunicator
-  C_HALT_FAILED,
+  C_STOP_FAILED,
   
   //Producer: ContainerHeartbeatHandler
   C_TIMED_OUT,
