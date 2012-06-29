@@ -23,33 +23,30 @@ package org.apache.hadoop.mapreduce.v2.app2.job.event;
  */
 public enum TaskAttemptEventType {
 
-  //Producer:Task
+  //Producer:Task, Speculator
   TA_SCHEDULE,
   TA_RESCHEDULE,
-
-  //Producer:Client, Task
-  TA_KILL,
-
-  //Producer:ContainerAllocator
-  TA_ASSIGNED,
-  TA_CONTAINER_COMPLETED,
-
-  //Producer:ContainerLauncher
-  TA_CONTAINER_LAUNCHED,
-  TA_CONTAINER_LAUNCH_FAILED,
-  TA_CONTAINER_CLEANED,
-
-  //Producer:TaskAttemptListener
+  
+  //Producer: TaskAttemptListener
+  TA_STARTED_REMOTELY,
+  TA_STATUS_UPDATE,
   TA_DIAGNOSTICS_UPDATE,
-  TA_COMMIT_PENDING, 
+  TA_COMMIT_PENDING,
   TA_DONE,
-  TA_FAILMSG,
-  TA_UPDATE,
+  TA_FAILED,
   TA_TIMED_OUT,
+  
+  //Producer: Client
+  TA_FAIL_REQUEST,
+  
+  //Producer: Client, Scheduler, On speculation.
+  TA_KILL_REQUEST,
 
-  //Producer:TaskCleaner
-  TA_CLEANUP_DONE,
-
-  //Producer:Job
-  TA_TOO_MANY_FETCH_FAILURE,
+  //Producer: Container / Scheduler.
+  // Indicates that the RM considers the container to be complete. Implies the 
+  // JVM is done, except in once case. TOOD: document the case.
+  TA_CONTAINER_COMPLETED,
+  
+  //Producer: Job
+  TA_TOO_MANY_FETCH_FAILURES,
 }
