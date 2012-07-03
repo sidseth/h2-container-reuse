@@ -584,6 +584,7 @@ public abstract class TaskImpl implements Task, EventHandler<TaskEvent> {
     ++numberUncompletedAttempts;
     //schedule the nextAttemptNumber
     if (failedAttempts > 0) {
+      // TODO XXX: Fix. TA_RESCHEDULE is no longer a valid event.
       eventHandler.handle(new TaskAttemptEvent(attempt.getID(),
         TaskAttemptEventType.TA_RESCHEDULE));
     } else {

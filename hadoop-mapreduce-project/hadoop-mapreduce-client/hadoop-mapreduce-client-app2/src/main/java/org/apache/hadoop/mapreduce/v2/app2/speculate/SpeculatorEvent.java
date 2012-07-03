@@ -62,6 +62,7 @@ public class SpeculatorEvent extends AbstractEvent<Speculator.EventType> {
    *  speculation wouldn't compete for containers with tasks which need
    *  to be run.
    */
+  // TODO XXX: This statement sounds like it's going to be broken by ContainerRe-use.
   public SpeculatorEvent(TaskId taskID, int containersNeededChange) {
     super(Speculator.EventType.TASK_CONTAINER_NEED_UPDATE);
     this.taskID = taskID;

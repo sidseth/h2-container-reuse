@@ -11,6 +11,7 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.mapreduce.v2.api.records.TaskAttemptId;
 import org.apache.hadoop.mapreduce.v2.app2.AppContext;
+import org.apache.hadoop.mapreduce.v2.app2.job.impl.TaskAttemptImplNew;
 import org.apache.hadoop.mapreduce.v2.app2.rm.node.AMNodeEvent;
 import org.apache.hadoop.mapreduce.v2.app2.rm.node.AMNodeEventType;
 import org.apache.hadoop.mapreduce.v2.app2.rm.node.AMNodeImpl;
