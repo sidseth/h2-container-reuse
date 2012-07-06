@@ -2,6 +2,8 @@ package org.apache.hadoop.mapreduce.v2.app2.rm.container;
 
 public enum AMContainerEventType {
 
+  // TODO Merge START/LAUNCH, STOP/HALT
+  
   //Producer: Scheduler
   C_START_REQUEST,
   C_ASSIGN_TA,

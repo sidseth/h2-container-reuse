@@ -69,6 +69,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 public class ContainerLauncherImpl extends AbstractService implements
     ContainerLauncher {
 
+  // TODO XXX Ensure the same thread is used to launch / stop the same container. Or - ensure event ordering.
   static final Log LOG = LogFactory.getLog(ContainerLauncherImpl.class);
 
   private ConcurrentHashMap<ContainerId, Container> containers = 

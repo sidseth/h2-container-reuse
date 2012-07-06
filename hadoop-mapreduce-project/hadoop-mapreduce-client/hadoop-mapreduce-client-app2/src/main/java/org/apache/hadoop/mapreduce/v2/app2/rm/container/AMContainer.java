@@ -10,5 +10,7 @@ public interface AMContainer {
   public AMContainerState getState();
   public ContainerId getContainerId();
   public List<TaskAttemptId> getTaskAttempts();
+  
+  // TODO Add a method to get the containers capabilities - to match taskAttempts.
 
 }

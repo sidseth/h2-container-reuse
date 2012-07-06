@@ -32,7 +32,7 @@ public class AMNodeImpl implements AMNode, EventHandler<AMNodeEvent> {
 
   protected EventHandler eventHandler;
 
-  private final List<ContainerId> contaienrs = new LinkedList<ContainerId>();
+  private final List<ContainerId> containers = new LinkedList<ContainerId>();
 
   private static boolean stateMachineInited = false;
   private static final StateMachineFactory
@@ -95,6 +95,7 @@ public class AMNodeImpl implements AMNode, EventHandler<AMNodeEvent> {
         .installTopology();
   }
 
+  @SuppressWarnings("rawtypes")
   public AMNodeImpl(NodeId nodeId, EventHandler eventHandler,
       AppContext appContext) {
     ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
@@ -136,7 +137,7 @@ public class AMNodeImpl implements AMNode, EventHandler<AMNodeEvent> {
   public List<ContainerId> getContainers() {
     this.readLock.lock();
     try {
-      List<ContainerId> cIds = new LinkedList<ContainerId>(this.contaienrs);
+      List<ContainerId> cIds = new LinkedList<ContainerId>(this.containers);
       return cIds;
     } finally {
       this.readLock.unlock();
@@ -165,13 +166,14 @@ public class AMNodeImpl implements AMNode, EventHandler<AMNodeEvent> {
   }
 
   protected SingleArcTransition<AMNodeImpl, AMNodeEvent> createContainerAddedTransition() {
-    return new ContainerAddedTransition();
+    return new ContainerAdded();
   }
-  protected static class ContainerAddedTransition implements
+  protected static class ContainerAdded implements
       SingleArcTransition<AMNodeImpl, AMNodeEvent> {
     @Override
-    public void transition(AMNodeImpl operand, AMNodeEvent event) {
-      // TODO Auto-generated method stub
+    public void transition(AMNodeImpl node, AMNodeEvent nEvent) {
+      AMNodeEventContainerAdded event = (AMNodeEventContainerAdded) nEvent;
+      node.containers.add(event.getContainerId());
     }
   }
   
@@ -181,29 +183,31 @@ public class AMNodeImpl implements AMNode, EventHandler<AMNodeEvent> {
   protected static class TaskAttemptSucceededTransition implements
       SingleArcTransition<AMNodeImpl, AMNodeEvent> {
     @Override
-    public void transition(AMNodeImpl operand, AMNodeEvent event) {
+    public void transition(AMNodeImpl node, AMNodeEvent nEvent) {
+      node.numSuccessfulTAs++;
     }
   }
 
   protected MultipleArcTransition<AMNodeImpl, AMNodeEvent, AMNodeState> createTaskAttemptFailedTransition() {
-    return new TaskAttemptFailedTransition();
+    return new TaskAttemptFailed();
   }
-  protected static class TaskAttemptFailedTransition implements
+  protected static class TaskAttemptFailed implements
       MultipleArcTransition<AMNodeImpl, AMNodeEvent, AMNodeState> {
     @Override
-    public AMNodeState transition(AMNodeImpl operand, AMNodeEvent event) {
-      // TODO Auto-generated method stub
-      return null;
+    public AMNodeState transition(AMNodeImpl node, AMNodeEvent nEvent) {
+      node.numFailedTAs++;
+      return AMNodeState.ACTIVE;
+      // TODO AMNodeManager really need to be processing the failed / successful events.
     }
   }
 
   protected SingleArcTransition<AMNodeImpl, AMNodeEvent> createNodeTurnedUnhealthyTransition() {
-    return new NodeTurnedUnhealthyTransition();
+    return new NodeTurnedUnhealthy();
   }
-  protected static class NodeTurnedUnhealthyTransition implements
+  protected static class NodeTurnedUnhealthy implements
       SingleArcTransition<AMNodeImpl, AMNodeEvent> {
     @Override
-    public void transition(AMNodeImpl operand, AMNodeEvent event) {
+    public void transition(AMNodeImpl node, AMNodeEvent nEvent) {
       // TODO Auto-generated method stub
     }
   }
@@ -214,7 +218,7 @@ public class AMNodeImpl implements AMNode, EventHandler<AMNodeEvent> {
   protected static class ContainerAllocatedWhileBlacklisted implements
       SingleArcTransition<AMNodeImpl, AMNodeEvent> {
     @Override
-    public void transition(AMNodeImpl operand, AMNodeEvent event) {
+    public void transition(AMNodeImpl node, AMNodeEvent nEvent) {
       // TODO Auto-generated method stub
     }
   }
@@ -225,7 +229,7 @@ public class AMNodeImpl implements AMNode, EventHandler<AMNodeEvent> {
   protected static class TaskAttemptSucceededWhileBlacklisted implements
       MultipleArcTransition<AMNodeImpl, AMNodeEvent, AMNodeState> {
     @Override
-    public AMNodeState transition(AMNodeImpl operand, AMNodeEvent event) {
+    public AMNodeState transition(AMNodeImpl node, AMNodeEvent nEvent) {
       // TODO Auto-generated method stub
       return null;
     }
@@ -237,7 +241,7 @@ public class AMNodeImpl implements AMNode, EventHandler<AMNodeEvent> {
   protected static class TaskAttemptFailedWhileBlacklisted implements
       SingleArcTransition<AMNodeImpl, AMNodeEvent> {
     @Override
-    public void transition(AMNodeImpl operand, AMNodeEvent event) {
+    public void transition(AMNodeImpl node, AMNodeEvent nEvent) {
       // TODO Auto-generated method stub
     }
   }
@@ -248,7 +252,7 @@ public class AMNodeImpl implements AMNode, EventHandler<AMNodeEvent> {
   protected static class ForcedUnblaclist implements
       SingleArcTransition<AMNodeImpl, AMNodeEvent> {
     @Override
-    public void transition(AMNodeImpl operand, AMNodeEvent event) {
+    public void transition(AMNodeImpl node, AMNodeEvent nEvent) {
       // TODO Auto-generated method stub
     }
   }
@@ -259,7 +263,7 @@ public class AMNodeImpl implements AMNode, EventHandler<AMNodeEvent> {
   protected static class ContainerAllocatedWhileUnhealthy implements
       SingleArcTransition<AMNodeImpl, AMNodeEvent> {
     @Override
-    public void transition(AMNodeImpl operand, AMNodeEvent event) {
+    public void transition(AMNodeImpl node, AMNodeEvent nEvent) {
       // TODO Auto-generated method stub
     }
   }
@@ -270,7 +274,7 @@ public class AMNodeImpl implements AMNode, EventHandler<AMNodeEvent> {
   protected static class TaskAttemptSucceededWhileUnhealthy implements
       SingleArcTransition<AMNodeImpl, AMNodeEvent> {
     @Override
-    public void transition(AMNodeImpl operand, AMNodeEvent event) {
+    public void transition(AMNodeImpl node, AMNodeEvent nEvent) {
       // TODO Auto-generated method stub
     }
   }
@@ -281,7 +285,7 @@ public class AMNodeImpl implements AMNode, EventHandler<AMNodeEvent> {
   protected static class TaskAttemptFailedWhileUnhealthy implements
       SingleArcTransition<AMNodeImpl, AMNodeEvent> {
     @Override
-    public void transition(AMNodeImpl operand, AMNodeEvent event) {
+    public void transition(AMNodeImpl node, AMNodeEvent nEvent) {
       // TODO Auto-generated method stub
     }
   }
@@ -292,7 +296,7 @@ public class AMNodeImpl implements AMNode, EventHandler<AMNodeEvent> {
   protected static class NodeTurnedHealthyTransition implements
       SingleArcTransition<AMNodeImpl, AMNodeEvent> {
     @Override
-    public void transition(AMNodeImpl operand, AMNodeEvent event) {
+    public void transition(AMNodeImpl node, AMNodeEvent nEvent) {
       // TODO Auto-generated method stub
     }
   }
