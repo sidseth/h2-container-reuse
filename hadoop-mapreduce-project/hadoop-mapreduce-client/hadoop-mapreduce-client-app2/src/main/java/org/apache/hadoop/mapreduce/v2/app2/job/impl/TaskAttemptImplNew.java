@@ -791,7 +791,7 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
     }
   }
 
-  protected static SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent> 
+  protected SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent> 
       createFailRequestTransition() {
     return new FailRequest();
   }
@@ -826,7 +826,7 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
     }
   }
 
-  protected static SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent> 
+  protected SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent> 
       createKillRequestTransition() {
     return new KillRequest();
   }
@@ -861,7 +861,7 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
     }
   }
   
-  protected static SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent> 
+  protected SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent> 
       createStartedTransition() {
     return new Started();
   }
@@ -917,7 +917,7 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
     }
   }
   
-  protected static SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent> 
+  protected SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent> 
       createFailRequestWhileRunningTransition() {
     return new FailRequestWhileRunning();
   }
@@ -935,7 +935,7 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
     }
   }
 
-  protected static SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent> 
+  protected SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent> 
       createKillRequestWhileRunningTransition() {
     return new KillRequestWhileRunning();
   }
@@ -954,7 +954,7 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
     }
   }
 
-  protected static SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent> 
+  protected SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent> 
       createContainerCompletedWhileRunningTransition() {
     return new ContainerCompletedWhileRunning();
   }
@@ -1002,7 +1002,7 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
     }
   }
 
-  protected static SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent> 
+  protected SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent> 
       createCommitPendingTransition() {
     return new CommitPendingHandler();
   }
@@ -1017,7 +1017,7 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
     }
   }
 
-  protected static SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent> 
+  protected SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent> 
       createSucceededTransition() {
     return new Succeeded();
   }
@@ -1043,7 +1043,7 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
     }
   }
 
-  protected static SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent>
+  protected SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent>
       createTimedOutTransition() {
     return new TimedOut();
   }
@@ -1056,7 +1056,7 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
     }
   }
 
-  protected static SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent>
+  protected SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent>
       createFailedWhileRunningTransition() {
     return new FailedWhileRunning();
   }
@@ -1071,7 +1071,7 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
     }
   }
 
-  protected static SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent>
+  protected SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent>
       createContainerCompletedTransition() {
     return new ContainerCompleted();
   }
@@ -1090,7 +1090,7 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
     }
   }
 
-  protected static SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent>
+  protected SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent>
       createFailRequestAfterSuccessTransition() {
     return new FailRequestAfterSuccess();
   }
@@ -1103,7 +1103,7 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
     }
   }
 
-  protected static SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent> 
+  protected SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent> 
       createKillRequestAfterSuccessTransition() {
     return new KillRequestAfterSuccess();
   }
@@ -1112,11 +1112,16 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
     @Override
     public void transition(TaskAttemptImplNew ta, TaskAttemptEvent event) {
       super.transition(ta, event);
+      // TODO Check for this being a MAP task only. Otherwise ignore it.
+      //... It may be possible for the event to come in for a REDUCE task, since
+      // this event and the DONE event are generated in separate threads. Ignore
+      // in that case.
+      // TODO Handle diagnostics info.
       ta.sendTaskAttemptCleanupEvent();
     }
   }
 
-  protected static SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent> 
+  protected SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent> 
       createTooManyFetchFailuresTransition() {
     return new TooManyFetchFailures();
   }

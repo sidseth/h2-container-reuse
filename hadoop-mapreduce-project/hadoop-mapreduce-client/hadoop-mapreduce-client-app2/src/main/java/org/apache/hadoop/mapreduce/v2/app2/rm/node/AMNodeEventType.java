@@ -13,5 +13,9 @@ public enum AMNodeEventType {
   N_TURNED_HEALTHY,
   
   //Producer: AMNodeManager
-  N_UNBLACKLIST_NODE
+  N_BLACKLISTING_ENABLED,
+  N_BLACKLISTING_DISABLED,
+  
+  //Producer: Node - Will not reach NodeImpl. Used to compute whether blacklisting should be ignored.
+  N_NODE_WAS_BLACKLISTED
 }

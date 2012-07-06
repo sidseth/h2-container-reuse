@@ -78,6 +78,10 @@ import org.apache.hadoop.mapreduce.v2.app2.rm.ContainerAllocator;
 import org.apache.hadoop.mapreduce.v2.app2.rm.ContainerAllocatorEvent;
 import org.apache.hadoop.mapreduce.v2.app2.rm.RMCommunicator;
 import org.apache.hadoop.mapreduce.v2.app2.rm.RMContainerAllocator;
+import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainer;
+import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainerMap;
+import org.apache.hadoop.mapreduce.v2.app2.rm.node.AMNode;
+import org.apache.hadoop.mapreduce.v2.app2.rm.node.AMNodeMap;
 import org.apache.hadoop.mapreduce.v2.app2.speculate.DefaultSpeculator;
 import org.apache.hadoop.mapreduce.v2.app2.speculate.Speculator;
 import org.apache.hadoop.mapreduce.v2.app2.speculate.SpeculatorEvent;
@@ -99,6 +103,7 @@ import org.apache.hadoop.yarn.api.ApplicationConstants;
 import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
 import org.apache.hadoop.yarn.api.records.ApplicationId;
 import org.apache.hadoop.yarn.api.records.ContainerId;
+import org.apache.hadoop.yarn.api.records.NodeId;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.hadoop.yarn.event.AsyncDispatcher;
 import org.apache.hadoop.yarn.event.Dispatcher;
@@ -145,6 +150,8 @@ public class MRAppMaster extends CompositeService {
   private final String nmHost;
   private final int nmPort;
   private final int nmHttpPort;
+  private final AMContainerMap containers = new AMContainerMap();
+  private final AMNodeMap nodes = new AMNodeMap();
   protected final MRAppMetrics metrics;
   private Map<TaskId, TaskInfo> completedTasksFromPreviousRun;
   private List<AMInfo> amInfos;
@@ -166,6 +173,7 @@ public class MRAppMaster extends CompositeService {
   private JobHistoryEventHandler jobHistoryEventHandler;
   private boolean inRecovery = false;
   private SpeculatorEventDispatcher speculatorEventDispatcher;
+  
 
   private Job job;
   private Credentials fsTokens = new Credentials(); // Filled during init
@@ -792,6 +800,26 @@ public class MRAppMaster extends CompositeService {
     @Override
     public ClusterInfo getClusterInfo() {
       return this.clusterInfo;
+    }
+    
+    @Override
+    public AMContainer getContainer(ContainerId containerId) {
+      return containers.get(containerId);
+    }
+
+    @Override
+    public Map<ContainerId, AMContainer> getAllContainers() {
+      return containers;
+    }
+
+    @Override
+    public AMNode getNode(NodeId nodeId) {
+      return nodes.get(nodeId);
+    }
+
+    @Override
+    public Map<NodeId, AMNode> getAllNodes() {
+      return nodes;
     }
   }
 

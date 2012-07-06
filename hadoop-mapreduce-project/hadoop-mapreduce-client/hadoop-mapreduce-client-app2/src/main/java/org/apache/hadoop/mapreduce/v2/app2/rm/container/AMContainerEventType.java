@@ -20,6 +20,7 @@ public enum AMContainerEventType {
   
   //Producer:RMCommunicator
   C_COMPLETED,
+  C_NODE_FAILED,
   
   //Producer: TA-> Scheduler -> Container (in case of failure etc)
   //          Scheduler -> Container (in case of pre-emption etc)

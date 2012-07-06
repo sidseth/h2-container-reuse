@@ -4,8 +4,9 @@ import java.util.List;
 
 import org.apache.hadoop.yarn.api.records.ContainerId;
 import org.apache.hadoop.yarn.api.records.NodeId;
+import org.apache.hadoop.yarn.event.EventHandler;
 
-public interface AMNode {
+public interface AMNode extends EventHandler<AMNodeEvent> {
   
   public NodeId getNodeId();
   public AMNodeState getState();
