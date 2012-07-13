@@ -37,7 +37,7 @@ public class AMSchedulerTALaunchRequestEvent extends AMSchedulerEvent {
     this.racks = racks;
   }
 
-  public TaskAttemptId getTaskAttemptId() {
+  public TaskAttemptId getAttemptID() {
     return this.attemptId;
   }
 

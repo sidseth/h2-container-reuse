@@ -1040,6 +1040,8 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
       ta.sendEvent(new SpeculatorEvent(ta.reportedStatus, ta.finishTime));
       // Inform the container.
       ta.sendEvent(new AMSchedulerTASucceededEvent(ta.attemptId));
+      
+      // TODO XXX: Need to send an event to the container as well.
     }
   }
 

@@ -53,10 +53,9 @@ import org.apache.hadoop.yarn.api.records.FinalApplicationStatus;
 import org.apache.hadoop.yarn.api.records.Resource;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.hadoop.yarn.event.EventHandler;
-import org.apache.hadoop.yarn.factories.RecordFactory;
-import org.apache.hadoop.yarn.factory.providers.RecordFactoryProvider;
 import org.apache.hadoop.yarn.ipc.YarnRPC;
 import org.apache.hadoop.yarn.service.AbstractService;
+import org.apache.hadoop.yarn.util.Records;
 
 /**
  * Registers/unregisters to RM and sends heartbeats to RM.
@@ -77,10 +76,7 @@ public abstract class RMCommunicator extends AbstractService  {
   private Resource maxContainerCapability;
   protected Map<ApplicationAccessType, String> applicationACLs;
 
-  private final RecordFactory recordFactory =
-      RecordFactoryProvider.getRecordFactory(null);
-
-  private final AppContext context;
+  protected final AppContext context;
   private Job job;
   // Has a signal (SIGTERM etc) been issued?
   protected volatile boolean isSignalled = false;
@@ -136,8 +132,8 @@ public abstract class RMCommunicator extends AbstractService  {
     //Register
     InetSocketAddress serviceAddr = clientService.getBindAddress();
     try {
-      RegisterApplicationMasterRequest request =
-        recordFactory.newRecordInstance(RegisterApplicationMasterRequest.class);
+      RegisterApplicationMasterRequest request = Records
+          .newRecord(RegisterApplicationMasterRequest.class);
       request.setApplicationAttemptId(applicationAttemptId);
       request.setHost(serviceAddr.getHostName());
       request.setRpcPort(serviceAddr.getPort());
@@ -181,8 +177,8 @@ public abstract class RMCommunicator extends AbstractService  {
           context.getApplicationID());
       LOG.info("History url is " + historyUrl);
 
-      FinishApplicationMasterRequest request =
-          recordFactory.newRecordInstance(FinishApplicationMasterRequest.class);
+      FinishApplicationMasterRequest request = Records
+          .newRecord(FinishApplicationMasterRequest.class);
       request.setAppAttemptId(this.applicationAttemptId);
       request.setFinishApplicationStatus(finishState);
       request.setDiagnostics(sb.toString());
@@ -240,7 +236,7 @@ public abstract class RMCommunicator extends AbstractService  {
         }
       }
     });
-    allocatorThread.setName("RMCommunicator Allocator");
+    allocatorThread.setName("RMCommunicator");
     allocatorThread.start();
   }
 

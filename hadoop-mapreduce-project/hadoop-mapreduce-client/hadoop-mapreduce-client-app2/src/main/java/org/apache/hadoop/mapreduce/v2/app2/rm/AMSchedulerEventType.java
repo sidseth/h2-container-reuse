@@ -7,13 +7,14 @@ public enum AMSchedulerEventType {
   S_TA_SUCCEEDED,
   
   //Producer: RMCommunicator
-  S_CONTAINER_ALLOCATED,
+  S_CONTAINERS_ALLOCATED,
   
+  // TODO XXX
   //Producer: RMCommunicator. May not be needed.
-  S_CONTAINER_COMPLETED,
+//  S_CONTAINER_COMPLETED,
   
   //Producer: RMComm
-  S_NODE_UNHEALTHY,
-  S_NODE_HEALTHY,
+//  S_NODE_UNHEALTHY,
+//  S_NODE_HEALTHY,
   
 }

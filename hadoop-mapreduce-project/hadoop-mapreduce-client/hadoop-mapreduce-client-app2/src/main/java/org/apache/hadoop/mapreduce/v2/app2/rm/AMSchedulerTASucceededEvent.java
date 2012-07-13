@@ -11,7 +11,7 @@ public class AMSchedulerTASucceededEvent extends AMSchedulerEvent {
     this.attemptId = attemptId;
   }
 
-  public TaskAttemptId getTaskAttemptId() {
+  public TaskAttemptId getAttemptID() {
     return this.attemptId;
   }
 

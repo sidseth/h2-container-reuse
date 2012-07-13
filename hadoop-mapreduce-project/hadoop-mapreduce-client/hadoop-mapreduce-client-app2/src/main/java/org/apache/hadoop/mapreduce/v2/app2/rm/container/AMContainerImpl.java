@@ -23,6 +23,7 @@ import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptKillEvent;
 import org.apache.hadoop.mapreduce.v2.app2.rm.NMCommunicatorLaunchRequestEvent;
 import org.apache.hadoop.mapreduce.v2.app2.rm.NMCommunicatorStopRequestEvent;
 import org.apache.hadoop.mapreduce.v2.app2.rm.RMCommunicatorContainerDeAllocateRequestEvent;
+import org.apache.hadoop.yarn.api.records.Container;
 import org.apache.hadoop.yarn.api.records.ContainerId;
 import org.apache.hadoop.yarn.api.records.ContainerLaunchContext;
 import org.apache.hadoop.yarn.event.Event;
@@ -41,6 +42,8 @@ public class AMContainerImpl implements AMContainer {
   private final WriteLock writeLock;
   // TODO Use ContainerId or a custom JvmId.
   private final ContainerId containerId;
+  // Container to be used for getters on capability, locality etc.
+  private final Container container;
   private final AppContext appContext;
   private final ContainerHeartbeatHandler chh;
   
@@ -116,13 +119,14 @@ public class AMContainerImpl implements AMContainer {
   }
   
   @SuppressWarnings("rawtypes")
-  public AMContainerImpl(ContainerId containerId,
+  public AMContainerImpl(Container container,
       ContainerHeartbeatHandler chh, EventHandler eventHandler,
       AppContext appContext) {
     ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
     this.readLock = rwLock.readLock();
     this.writeLock = rwLock.writeLock();
-    this.containerId = containerId;
+    this.container = container;
+    this.containerId = container.getId();
     this.eventHandler = eventHandler;
     this.appContext = appContext;
     this.chh = chh;
@@ -149,6 +153,11 @@ public class AMContainerImpl implements AMContainer {
   @Override
   public ContainerId getContainerId() {
     return this.containerId;
+  }
+  
+  @Override
+  public Container getContainer() {
+    return this.container;
   }
 
   @Override

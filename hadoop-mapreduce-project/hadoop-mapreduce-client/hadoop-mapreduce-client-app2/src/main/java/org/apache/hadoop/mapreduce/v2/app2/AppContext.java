@@ -24,7 +24,9 @@ import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.mapreduce.v2.api.records.JobId;
 import org.apache.hadoop.mapreduce.v2.app2.job.Job;
 import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainer;
+import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainerMap;
 import org.apache.hadoop.mapreduce.v2.app2.rm.node.AMNode;
+import org.apache.hadoop.mapreduce.v2.app2.rm.node.AMNodeMap;
 import org.apache.hadoop.yarn.Clock;
 import org.apache.hadoop.yarn.ClusterInfo;
 import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
@@ -62,8 +64,8 @@ public interface AppContext {
   ClusterInfo getClusterInfo();
   
   AMContainer getContainer(ContainerId containerId);
-  Map<ContainerId, AMContainer> getAllContainers();
+  AMContainerMap getAllContainers();
   
   AMNode getNode(NodeId nodeId);
-  Map<NodeId, AMNode> getAllNodes();
+  AMNodeMap getAllNodes();
 }

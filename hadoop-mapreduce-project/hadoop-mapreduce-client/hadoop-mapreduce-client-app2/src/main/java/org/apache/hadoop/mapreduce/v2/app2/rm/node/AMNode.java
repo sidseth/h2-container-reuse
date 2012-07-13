@@ -12,4 +12,5 @@ public interface AMNode extends EventHandler<AMNodeEvent> {
   public AMNodeState getState();
   public List<ContainerId> getContainers();
 
+  public boolean isUsable();
 }

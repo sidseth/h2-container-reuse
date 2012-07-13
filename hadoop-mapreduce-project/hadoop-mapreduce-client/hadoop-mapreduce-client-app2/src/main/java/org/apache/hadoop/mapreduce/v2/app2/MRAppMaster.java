@@ -150,8 +150,9 @@ public class MRAppMaster extends CompositeService {
   private final String nmHost;
   private final int nmPort;
   private final int nmHttpPort;
-  private final AMContainerMap containers = new AMContainerMap();
-  private final AMNodeMap nodes = new AMNodeMap();
+  // TODO XXX: initialize containers and nodes.
+  private AMContainerMap containers;
+  private AMNodeMap nodes;
   protected final MRAppMetrics metrics;
   private Map<TaskId, TaskInfo> completedTasksFromPreviousRun;
   private List<AMInfo> amInfos;
@@ -808,7 +809,7 @@ public class MRAppMaster extends CompositeService {
     }
 
     @Override
-    public Map<ContainerId, AMContainer> getAllContainers() {
+    public AMContainerMap getAllContainers() {
       return containers;
     }
 
@@ -818,7 +819,7 @@ public class MRAppMaster extends CompositeService {
     }
 
     @Override
-    public Map<NodeId, AMNode> getAllNodes() {
+    public AMNodeMap getAllNodes() {
       return nodes;
     }
   }

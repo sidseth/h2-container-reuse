@@ -32,16 +32,16 @@ public enum TaskAttemptState {
   
   // States in old implementation.
        //  NEW, 
-//  UNASSIGNED, 
-//  ASSIGNED, 
+  UNASSIGNED, 
+  ASSIGNED, 
        //  RUNNING, 
        //  COMMIT_PENDING, 
-//  SUCCESS_CONTAINER_CLEANUP, 
+  SUCCESS_CONTAINER_CLEANUP, 
        //  SUCCEEDED, 
-//  FAIL_CONTAINER_CLEANUP, 
-//  FAIL_TASK_CLEANUP, 
+  FAIL_CONTAINER_CLEANUP, 
+  FAIL_TASK_CLEANUP, 
        //  FAILED, 
-//  KILL_CONTAINER_CLEANUP, 
-//  KILL_TASK_CLEANUP, 
+  KILL_CONTAINER_CLEANUP, 
+  KILL_TASK_CLEANUP, 
        //  KILLED
 }
