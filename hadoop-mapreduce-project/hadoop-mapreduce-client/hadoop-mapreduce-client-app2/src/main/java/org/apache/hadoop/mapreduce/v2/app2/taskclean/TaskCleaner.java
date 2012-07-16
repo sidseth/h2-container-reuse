@@ -23,6 +23,8 @@ import org.apache.hadoop.yarn.event.EventHandler;
 public interface TaskCleaner extends EventHandler<TaskCleanupEvent> {
 
   enum EventType {
-    TASK_CLEAN
+    // TODO XXX Rename this event once the code is more stable.
+    TASK_CLEAN,
+    CONTAINER_COMPLETED,
   }
 }

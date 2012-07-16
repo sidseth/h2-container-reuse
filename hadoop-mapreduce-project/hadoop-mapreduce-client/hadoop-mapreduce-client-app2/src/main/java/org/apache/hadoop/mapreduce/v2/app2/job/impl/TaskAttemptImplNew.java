@@ -38,6 +38,7 @@ import org.apache.hadoop.mapreduce.v2.api.records.TaskId;
 import org.apache.hadoop.mapreduce.v2.api.records.TaskType;
 import org.apache.hadoop.mapreduce.v2.app2.AppContext;
 import org.apache.hadoop.mapreduce.v2.app2.TaskAttemptListener;
+import org.apache.hadoop.mapreduce.v2.app2.TaskHeartbeatHandler;
 import org.apache.hadoop.mapreduce.v2.app2.job.TaskAttempt;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.JobCounterUpdateEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.JobDiagnosticsUpdateEvent;
@@ -104,6 +105,7 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
   private final Lock readLock;
   private final Lock writeLock;
   private final AppContext appContext;
+  private final TaskHeartbeatHandler taskHeartbeatHandler;
   private Credentials credentials;
   private Token<JobTokenIdentifier> jobToken;
   private long launchTime = 0;
@@ -112,6 +114,7 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
   private int shufflePort = -1;
   private String trackerName;
   private int httpPort;
+  
 
   // TODO Can these be replaced by the container object ?
   private ContainerId containerId;
@@ -143,54 +146,42 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
         .addTransition(TaskAttemptState.NEW, TaskAttemptState.NEW, TaskAttemptEventType.TA_DIAGNOSTICS_UPDATE, DIAGNOSTIC_INFORMATION_UPDATE_TRANSITION)
         .addTransition(TaskAttemptState.NEW, TaskAttemptState.FAILED, TaskAttemptEventType.TA_FAIL_REQUEST, createFailRequestTransition())
         .addTransition(TaskAttemptState.NEW, TaskAttemptState.KILLED, TaskAttemptEventType.TA_KILL_REQUEST, createKillRequestTransition())
-        // TODO Do the last two transition register as anything ? JobHistory can't really be sent out. Can send out events to the Task though.
         
         .addTransition(TaskAttemptState.START_WAIT, TaskAttemptState.RUNNING, TaskAttemptEventType.TA_STARTED_REMOTELY, createStartedTransition())
         .addTransition(TaskAttemptState.START_WAIT, TaskAttemptState.START_WAIT, TaskAttemptEventType.TA_DIAGNOSTICS_UPDATE, DIAGNOSTIC_INFORMATION_UPDATE_TRANSITION)
-        .addTransition(TaskAttemptState.START_WAIT, TaskAttemptState.FAIL_IN_PROGRESS, TaskAttemptEventType.TA_FAIL_REQUEST, createFailRequestWhileRunningTransition())
-        .addTransition(TaskAttemptState.START_WAIT, TaskAttemptState.KILL_IN_PROGRESS, TaskAttemptEventType.TA_KILL_REQUEST, createKillRequestWhileRunningTransition())
-        .addTransition(TaskAttemptState.START_WAIT, TaskAttemptState.FAILED, TaskAttemptEventType.TA_CONTAINER_COMPLETED, createContainerCompletedWhileRunningTransition())
+        .addTransition(TaskAttemptState.START_WAIT, TaskAttemptState.FAILED, TaskAttemptEventType.TA_FAIL_REQUEST, createFailRequestBeforeRunningTransition())
+        .addTransition(TaskAttemptState.START_WAIT, TaskAttemptState.KILLED, TaskAttemptEventType.TA_KILL_REQUEST, createKillRequestBeforeRunningTransition())
+        .addTransition(TaskAttemptState.START_WAIT, TaskAttemptState.FAILED, TaskAttemptEventType.TA_CONTAINER_COMPLETED, createContainerCompletedBeforeRunningTransition())
         
         .addTransition(TaskAttemptState.RUNNING, TaskAttemptState.RUNNING, TaskAttemptEventType.TA_STATUS_UPDATE, createStatusUpdateTransition())
         .addTransition(TaskAttemptState.RUNNING, TaskAttemptState.RUNNING, TaskAttemptEventType.TA_DIAGNOSTICS_UPDATE, DIAGNOSTIC_INFORMATION_UPDATE_TRANSITION)
         .addTransition(TaskAttemptState.RUNNING, TaskAttemptState.COMMIT_PENDING, TaskAttemptEventType.TA_COMMIT_PENDING, createCommitPendingTransition())
         .addTransition(TaskAttemptState.RUNNING, TaskAttemptState.SUCCEEDED, TaskAttemptEventType.TA_DONE, createSucceededTransition())
-        .addTransition(TaskAttemptState.RUNNING, TaskAttemptState.FAIL_IN_PROGRESS, TaskAttemptEventType.TA_FAILED, createFailedWhileRunningTransition())
-        .addTransition(TaskAttemptState.RUNNING, TaskAttemptState.FAIL_IN_PROGRESS, TaskAttemptEventType.TA_TIMED_OUT, createTimedOutTransition())
-        .addTransition(TaskAttemptState.RUNNING, TaskAttemptState.FAIL_IN_PROGRESS, TaskAttemptEventType.TA_FAIL_REQUEST, createFailRequestWhileRunningTransition())
-        .addTransition(TaskAttemptState.RUNNING, TaskAttemptState.KILL_IN_PROGRESS, TaskAttemptEventType.TA_KILL_REQUEST, createKillRequestWhileRunningTransition())
-        .addTransition(TaskAttemptState.RUNNING, TaskAttemptState.FAILED, TaskAttemptEventType.TA_CONTAINER_COMPLETED, createContainerCompletedWhileRunningTransition())
-        // What happens on a TA_KILLED ? 
+        .addTransition(TaskAttemptState.RUNNING, TaskAttemptState.FAILED, TaskAttemptEventType.TA_FAILED, createFailRequestWhileRunningTransition())
+        .addTransition(TaskAttemptState.RUNNING, TaskAttemptState.FAILED, TaskAttemptEventType.TA_TIMED_OUT, createFailRequestWhileRunningTransition())
+        .addTransition(TaskAttemptState.RUNNING, TaskAttemptState.FAILED, TaskAttemptEventType.TA_FAIL_REQUEST, createFailRequestWhileRunningTransition())
+        .addTransition(TaskAttemptState.RUNNING, TaskAttemptState.KILLED, TaskAttemptEventType.TA_KILL_REQUEST, createKillRequestWhileRunningTransition())
+        .addTransition(TaskAttemptState.RUNNING, TaskAttemptState.FAILED, TaskAttemptEventType.TA_CONTAINER_COMPLETED, createContainerCompletedWhileRunningTransition()) 
         
         .addTransition(TaskAttemptState.COMMIT_PENDING, TaskAttemptState.COMMIT_PENDING, TaskAttemptEventType.TA_STATUS_UPDATE, createStatusUpdateTransition())
         .addTransition(TaskAttemptState.COMMIT_PENDING, TaskAttemptState.COMMIT_PENDING, TaskAttemptEventType.TA_DIAGNOSTICS_UPDATE, DIAGNOSTIC_INFORMATION_UPDATE_TRANSITION)
         .addTransition(TaskAttemptState.COMMIT_PENDING, TaskAttemptState.COMMIT_PENDING, TaskAttemptEventType.TA_COMMIT_PENDING) // TODO ensure this is an ignorable event.
         .addTransition(TaskAttemptState.COMMIT_PENDING, TaskAttemptState.SUCCEEDED, TaskAttemptEventType.TA_DONE, createSucceededTransition())
-        .addTransition(TaskAttemptState.COMMIT_PENDING, TaskAttemptState.FAIL_IN_PROGRESS, TaskAttemptEventType.TA_FAILED, createFailedWhileRunningTransition())
-        .addTransition(TaskAttemptState.COMMIT_PENDING, TaskAttemptState.FAIL_IN_PROGRESS, TaskAttemptEventType.TA_TIMED_OUT, createTimedOutTransition())
-        .addTransition(TaskAttemptState.COMMIT_PENDING, TaskAttemptState.FAIL_IN_PROGRESS, TaskAttemptEventType.TA_FAIL_REQUEST, createFailRequestTransition())
-        .addTransition(TaskAttemptState.COMMIT_PENDING, TaskAttemptState.KILL_IN_PROGRESS, TaskAttemptEventType.TA_KILL_REQUEST, createKillRequestTransition())
+        .addTransition(TaskAttemptState.COMMIT_PENDING, TaskAttemptState.FAILED, TaskAttemptEventType.TA_FAILED, createFailRequestWhileRunningTransition())
+        .addTransition(TaskAttemptState.COMMIT_PENDING, TaskAttemptState.FAILED, TaskAttemptEventType.TA_TIMED_OUT, createFailRequestWhileRunningTransition())
+        .addTransition(TaskAttemptState.COMMIT_PENDING, TaskAttemptState.FAILED, TaskAttemptEventType.TA_FAIL_REQUEST, createFailRequestWhileRunningTransition())
+        .addTransition(TaskAttemptState.COMMIT_PENDING, TaskAttemptState.KILLED, TaskAttemptEventType.TA_KILL_REQUEST, createKillRequestWhileRunningTransition())
         .addTransition(TaskAttemptState.COMMIT_PENDING, TaskAttemptState.FAILED, TaskAttemptEventType.TA_CONTAINER_COMPLETED, createContainerCompletedWhileRunningTransition())
-        
-        .addTransition(TaskAttemptState.KILL_IN_PROGRESS, TaskAttemptState.KILL_IN_PROGRESS, TaskAttemptEventType.TA_DIAGNOSTICS_UPDATE, DIAGNOSTIC_INFORMATION_UPDATE_TRANSITION)
-        .addTransition(TaskAttemptState.KILL_IN_PROGRESS, TaskAttemptState.KILL_IN_PROGRESS, EnumSet.of(TaskAttemptEventType.TA_STARTED_REMOTELY, TaskAttemptEventType.TA_STATUS_UPDATE, TaskAttemptEventType.TA_COMMIT_PENDING, TaskAttemptEventType.TA_DONE, TaskAttemptEventType.TA_FAILED, TaskAttemptEventType.TA_TIMED_OUT, TaskAttemptEventType.TA_FAIL_REQUEST, TaskAttemptEventType.TA_KILL_REQUEST))
-        .addTransition(TaskAttemptState.KILL_IN_PROGRESS, TaskAttemptState.KILLED, TaskAttemptEventType.TA_CONTAINER_COMPLETED, createContainerCompletedTransition())
-        
-        .addTransition(TaskAttemptState.FAIL_IN_PROGRESS, TaskAttemptState.FAIL_IN_PROGRESS, TaskAttemptEventType.TA_DIAGNOSTICS_UPDATE, DIAGNOSTIC_INFORMATION_UPDATE_TRANSITION)
-        .addTransition(TaskAttemptState.FAIL_IN_PROGRESS, TaskAttemptState.FAIL_IN_PROGRESS, EnumSet.of(TaskAttemptEventType.TA_STARTED_REMOTELY, TaskAttemptEventType.TA_STATUS_UPDATE, TaskAttemptEventType.TA_COMMIT_PENDING, TaskAttemptEventType.TA_DONE, TaskAttemptEventType.TA_FAILED, TaskAttemptEventType.TA_TIMED_OUT, TaskAttemptEventType.TA_FAIL_REQUEST, TaskAttemptEventType.TA_KILL_REQUEST))
-        .addTransition(TaskAttemptState.FAIL_IN_PROGRESS, TaskAttemptState.FAILED, TaskAttemptEventType.TA_CONTAINER_COMPLETED, createContainerCompletedTransition())
-        
-        // TODO Also, considering FAILED / KILLED != ContainerComplete - since there is a case where this doesn't happen at the moment. The state machine likely needs to be re-evaluated. Also if the *_IN_PROGRESS states are removed.
-        .addTransition(TaskAttemptState.KILLED, TaskAttemptState.KILLED, TaskAttemptEventType.TA_DIAGNOSTICS_UPDATE, DIAGNOSTIC_INFORMATION_UPDATE_TRANSITION)
-        .addTransition(TaskAttemptState.KILLED, TaskAttemptState.KILLED, EnumSet.of(TaskAttemptEventType.TA_FAIL_REQUEST, TaskAttemptEventType.TA_KILL_REQUEST))
 
-        
+        // TODO All events from the TAL may not come in / need to be ignored. Depends on when the TAL unregistration happens.
+        .addTransition(TaskAttemptState.KILLED, TaskAttemptState.KILLED, TaskAttemptEventType.TA_DIAGNOSTICS_UPDATE, DIAGNOSTIC_INFORMATION_UPDATE_TRANSITION)
+        .addTransition(TaskAttemptState.KILLED, TaskAttemptState.KILLED, EnumSet.of(TaskAttemptEventType.TA_STARTED_REMOTELY, TaskAttemptEventType.TA_STATUS_UPDATE, TaskAttemptEventType.TA_COMMIT_PENDING, TaskAttemptEventType.TA_DONE, TaskAttemptEventType.TA_FAILED, TaskAttemptEventType.TA_FAIL_REQUEST, TaskAttemptEventType.TA_KILL_REQUEST, TaskAttemptEventType.TA_CONTAINER_COMPLETED))
+
         .addTransition(TaskAttemptState.FAILED, TaskAttemptState.FAILED, TaskAttemptEventType.TA_DIAGNOSTICS_UPDATE, DIAGNOSTIC_INFORMATION_UPDATE_TRANSITION)
-        .addTransition(TaskAttemptState.FAILED, TaskAttemptState.FAILED, EnumSet.of(TaskAttemptEventType.TA_FAIL_REQUEST, TaskAttemptEventType.TA_KILL_REQUEST))
+        .addTransition(TaskAttemptState.FAILED, TaskAttemptState.FAILED, EnumSet.of(TaskAttemptEventType.TA_STARTED_REMOTELY, TaskAttemptEventType.TA_STATUS_UPDATE, TaskAttemptEventType.TA_COMMIT_PENDING, TaskAttemptEventType.TA_DONE, TaskAttemptEventType.TA_FAILED, TaskAttemptEventType.TA_FAIL_REQUEST, TaskAttemptEventType.TA_KILL_REQUEST, TaskAttemptEventType.TA_CONTAINER_COMPLETED))
         
         .addTransition(TaskAttemptState.SUCCEEDED, TaskAttemptState.SUCCEEDED, TaskAttemptEventType.TA_DIAGNOSTICS_UPDATE, DIAGNOSTIC_INFORMATION_UPDATE_TRANSITION)
         .addTransition(TaskAttemptState.SUCCEEDED, TaskAttemptState.SUCCEEDED, TaskAttemptEventType.TA_CONTAINER_COMPLETED)
-        // TODO This state doesn't necessarily mean the Container is compelted - which implies any cleanup could be affected.
         .addTransition(TaskAttemptState.SUCCEEDED, TaskAttemptState.FAILED, TaskAttemptEventType.TA_FAIL_REQUEST, createFailRequestAfterSuccessTransition())
         .addTransition(TaskAttemptState.SUCCEEDED, TaskAttemptState.KILLED, TaskAttemptEventType.TA_KILL_REQUEST, createKillRequestAfterSuccessTransition())
         // TODO Ensure TOO_MANY_FETCH_FAILURES can come in only for a specific TaskAttempt.
@@ -200,12 +191,13 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
         .installTopology();
   }
   
+  // TODO Remove TaskAttemptListener from the constructor.
   @SuppressWarnings("rawtypes")
   public TaskAttemptImplNew(TaskId taskId, int i, EventHandler eventHandler,
       TaskAttemptListener tal, Path jobFile, int partition, JobConf conf,
       String[] dataLocalHosts, OutputCommitter committer,
       Token<JobTokenIdentifier> jobToken, Credentials credentials, Clock clock,
-      AppContext appContext) {
+      TaskHeartbeatHandler taskHeartbeatHandler, AppContext appContext) {
     ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
     this.readLock = rwLock.readLock();
     this.writeLock = rwLock.writeLock();
@@ -213,7 +205,6 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
     this.jobId = taskId.getJobId();
     this.attemptId = MRBuilderUtils.newTaskAttemptId(taskId, i);
     this.eventHandler = eventHandler;
-    //tal
     //Reported status
     this.jobFile = jobFile;
     this.partition = partition;
@@ -223,6 +214,7 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
     this.jobToken = jobToken;
     this.credentials = credentials;
     this.clock = clock;
+    this.taskHeartbeatHandler = taskHeartbeatHandler;
     this.appContext = appContext;
     this.resourceCapability = BuilderUtils.newResource(getMemoryRequired(conf,
         taskId.getTaskType()));
@@ -324,7 +316,6 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
 
   @Override
   public boolean isFinished() {
-    // TODO Re-evaluate. May be diff considering events go out to Task earlier.
     readLock.lock();
     try {
       // TODO: Use stateMachine level method?
@@ -629,7 +620,10 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
     WrappedProgressSplitsBlock splitsBlock = getProgressSplitBlock();
     if (splitsBlock != null) {
       long now = clock.getTime();
-      long start = getLaunchTime(); // TODO Ensure not 0
+      long start = getLaunchTime();
+      
+      if (start == 0)
+        return;
 
       if (start != 0 && now - start <= Integer.MAX_VALUE) {
         splitsBlock.getProgressWallclockTime().extend(newProgress,
@@ -756,13 +750,10 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
       }
 
       // Send out a launch request to the scheduler.
-      AMSchedulerTALaunchRequestEvent launchRequestEvent = 
-          new AMSchedulerTALaunchRequestEvent( ta.attemptId, 
-              scheduleEvent.isRescheduled(), ta.resourceCapability,
-              remoteTask, ta, ta.credentials, ta.jobToken, hostArray, rackArray);
+      AMSchedulerTALaunchRequestEvent launchRequestEvent = new AMSchedulerTALaunchRequestEvent(
+          ta.attemptId, scheduleEvent.isRescheduled(), ta.resourceCapability,
+          remoteTask, ta, ta.credentials, ta.jobToken, hostArray, rackArray);
       ta.sendEvent(launchRequestEvent);
-
-      // TODO Who's responsible for registering the task with the TAL?
     }
   }
 
@@ -796,10 +787,12 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
     return new FailRequest();
   }
 
+  // TODO XXX: FailRequest == KillRequest.
   protected static class FailRequest implements
       SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent> {
     @Override
     public void transition(TaskAttemptImplNew ta, TaskAttemptEvent event) {
+      // TODO XXX -> Remove this comment after getting to CompletedEvent processing.
       // TODO XXX move this out into a helper method. CompletedEvents should not
       // be extending Failed events.
       //set the finish time
@@ -872,6 +865,8 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
     public void transition(TaskAttemptImplNew ta, TaskAttemptEvent origEvent) {
       TaskAttemptRemoteStartEvent event = (TaskAttemptRemoteStartEvent) origEvent;
 
+      // TODO XXX What all changes here after CLC construction is done. Remove TODOs after that.
+      
       ta.containerId = event.getContainer().getId();
       ta.containerNodeId = event.getContainer().getNodeId();
       ta.containerMgrAddress = ta.containerNodeId.toString();
@@ -894,16 +889,14 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
       ta.httpPort = nodeHttpInetAddr.getPort();
       ta.sendEvent(createJobCounterUpdateEventTALaunched(ta));
       
-      LOG.info("TaskAttempt: [" + ta.attemptId + "] using containerId: ["
-          + ta.containerId + " on NM: [" + ta.containerMgrAddress + "]");
+      LOG.info("TaskAttempt: [" + ta.attemptId+ "] started."
+          + " Is using containerId: [" + ta.containerId + "]"
+          + " on NM: [" + ta.containerMgrAddress + "]");
 
       // JobHistoryEvent
       ta.sendEvent(ta.createTaskAttemptStartedEvent());
 
       // Inform the speculator about the container assignment.
-      // TODO This could be moved to the container as well - since it's a
-      // container related event.
-      // ... IAC figure out how the speculator uses this.
       ta.maybeSendSpeculatorContainerRelease();
       // Inform speculator about startTime
       ta.sendEvent(new SpeculatorEvent(ta.attemptId, true, ta.launchTime));
@@ -912,63 +905,79 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
       ta.sendEvent(new TaskTAttemptEvent(ta.attemptId,
           TaskEventType.T_ATTEMPT_LAUNCHED));
       
-      
-      // TODO XXX: Register with TaskHeartbeatHandler
+      ta.taskHeartbeatHandler.register(ta.attemptId);
     }
   }
   
-  protected SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent> 
-      createFailRequestWhileRunningTransition() {
-    return new FailRequestWhileRunning();
+  protected SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent>
+      createFailRequestBeforeRunningTransition() {
+    return new FailRequestBeforeRunning();
   }
+
+  // TODO XXX: Rename FailRequest / KillRequest*BEFORE*Running
   // TODO Again, can failReqeust and KillRequest be merged ?
-  protected static class FailRequestWhileRunning extends FailRequest {    
+  protected static class FailRequestBeforeRunning extends FailRequest {
     @Override
     public void transition(TaskAttemptImplNew ta, TaskAttemptEvent event) {
+      // XXX Remove Comment: Takes care of finish time, history, TaskEvent.
       super.transition(ta, event);
       // Inform the scheduler
       ta.sendEvent(new AMSchedulerTAStopRequestEvent(ta.attemptId));
-      // Decrement speculator container request.. change this if it's done elsewhere.
+      // Decrement speculator container request.
+      ta.maybeSendSpeculatorContainerRelease();
+
+      // TODO: How expensive is cleanup if scheduled for attempts which may not
+      // need it.
+      // Send a Cleanup event.
+      ta.sendTaskAttemptCleanupEvent();
+      
+      // TODO XXX. AnyCounterUpdates ? KILL/FAIL count. Slot_Millis, etc
+    }
+  }
+
+  protected SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent> 
+      createKillRequestBeforeRunningTransition() {
+    return new KillRequestBeforeRunning();
+  }
+
+  // TODO XXX: Identical to FailRequestWhileRunning except for states.
+  protected static class KillRequestBeforeRunning extends KillRequest {
+    @Override
+    public void transition(TaskAttemptImplNew ta, TaskAttemptEvent event) {
+      // XXX Remove Comment: Takes care of finish time, history, TaskEvent.
+      super.transition(ta, event);
+      // Inform the scheduler
+      ta.sendEvent(new AMSchedulerTAStopRequestEvent(ta.attemptId));
+      // Decrement speculator container request.
+      ta.maybeSendSpeculatorContainerRelease();
+
+      // TODO: How expensive is cleanup if scheduled for attempts which may not
+      // need it.
+      // Send a Cleanup event.
+      ta.sendTaskAttemptCleanupEvent();
+      
+      // TODO XXX. AnyCounterUpdates ? KILL/FAIL count. Slot_Millis, etc
+    }
+  }
+
+  protected SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent> 
+      createContainerCompletedBeforeRunningTransition() {
+    return new ContainerCompletedBeforeRunning();
+  }
+
+  protected static class ContainerCompletedBeforeRunning extends FailRequest {
+    @Override
+    public void transition(TaskAttemptImplNew ta, TaskAttemptEvent event) {
+      super.transition(ta, event);
+      // History, Inform Task, finishTime handled by FailRequest
+      // Decrement speculator container request.
       ta.maybeSendSpeculatorContainerRelease();
       
-      // TODO Maybe schedule cleanup.
-    }
-  }
-
-  protected SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent> 
-      createKillRequestWhileRunningTransition() {
-    return new KillRequestWhileRunning();
-  }
-
-  protected static class KillRequestWhileRunning extends KillRequest {
-    @Override
-    public void transition(TaskAttemptImplNew ta, TaskAttemptEvent event) {
-      super.transition(ta, event);
-      // Inform the scheduler
-      ta.sendEvent(new AMSchedulerTAStopRequestEvent(ta.attemptId));
-      // Decrement speculator container request.. change this if it's done
-      // elsewhere.
-      ta.maybeSendSpeculatorContainerRelease();
-
-      // TODO Maybe schedule cleanup.
-    }
-  }
-
-  protected SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent> 
-      createContainerCompletedWhileRunningTransition() {
-    return new ContainerCompletedWhileRunning();
-  }
-
-  protected static class ContainerCompletedWhileRunning extends FailRequest {
-    @Override
-    public void transition(TaskAttemptImplNew ta, TaskAttemptEvent event) {
-      super.transition(ta, event);
-      // History etc handled by TAFailRequest
-      // Decrement speculator container request.. change this if it's done
-      // elsewhere.
-      ta.maybeSendSpeculatorContainerRelease();
-      //Request cleanup.
-      ta.sendTaskAttemptCleanupEvent();
+      //Cleanup not required. TA_STARTED_REMOTELY would have been in the queue
+      // before TA_CONTAINER_COMPLETED. Both from the Container.
+      
+      // TODO XXX: Maybe other counters: Failed, Killed, etc.
+      // TODO XXX XXX: May need to inform the scheduler.
     }
   }
 
@@ -997,12 +1006,12 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
         ta.sendEvent(new JobTaskAttemptFetchFailureEvent(ta.attemptId,
             ta.reportedStatus.fetchFailedMaps));
       }
-      // TODO Maybe send fetch failure to the node as well ?
-
+      // TODO at some point. Nodes may be interested in FetchFailure info.
+      // Can be used to blacklist nodes.
     }
   }
 
-  protected SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent> 
+  protected SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent>
       createCommitPendingTransition() {
     return new CommitPendingHandler();
   }
@@ -1026,71 +1035,93 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
       SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent> {
     @Override
     public void transition(TaskAttemptImplNew ta, TaskAttemptEvent event) {
-      // TODO ... Stacking pulls for a reduce task, even if the TA finishes independently.
-      // Will likely be the Job's responsibility.
+      
+      
+      
+      //Inform the speculator. Generate history event. Update counters.
       ta.setFinishTime();
-      // Update counters.
-      ta.sendEvent(createJobCounterUpdateEventSlotMillis(ta));
-      // Send out history event.
+      ta.sendEvent(new SpeculatorEvent(ta.reportedStatus, ta.finishTime));
       ta.logAttemptFinishedEvent(TaskAttemptState.SUCCEEDED);
+      ta.sendEvent(createJobCounterUpdateEventSlotMillis(ta));
+
+      // Inform the Scheduler.
+      ta.sendEvent(new AMSchedulerTASucceededEvent(ta.attemptId));
+      
       // Inform the task.
       ta.sendEvent(new TaskTAttemptEvent(ta.attemptId,
           TaskEventType.T_ATTEMPT_SUCCEEDED));
-      // Inform the Speculator
-      ta.sendEvent(new SpeculatorEvent(ta.reportedStatus, ta.finishTime));
-      // Inform the container.
-      ta.sendEvent(new AMSchedulerTASucceededEvent(ta.attemptId));
       
-      // TODO XXX: Need to send an event to the container as well.
+      //Unregister from the TaskHeartbeatHandler.
+      ta.taskHeartbeatHandler.unregister(ta.attemptId);
+
+      // TODO maybe. For reuse ... Stacking pulls for a reduce task, even if the
+      // TA finishes independently. // Will likely be the Job's responsibility.
+      
     }
   }
 
-  protected SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent>
-      createTimedOutTransition() {
-    return new TimedOut();
+  protected SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent> 
+    createFailRequestWhileRunningTransition() {
+    return new FailRequestWhileRunning();
   }
 
-  protected static class TimedOut extends FailedWhileRunning {
+  protected static class FailRequestWhileRunning extends
+      FailRequestBeforeRunning {
     @Override
     public void transition(TaskAttemptImplNew ta, TaskAttemptEvent event) {
       super.transition(ta, event);
-      // TODO Get rid of this.
+      ta.taskHeartbeatHandler.unregister(ta.attemptId);
     }
   }
-
+  
+  // TODO XXX: Remove and merge with FailRequestWhileRunning
   protected SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent>
-      createFailedWhileRunningTransition() {
-    return new FailedWhileRunning();
+      createKillRequestWhileRunningTransition() {
+    return new KillRequestWhileRunning();
   }
 
-  protected static class FailedWhileRunning extends FailRequestWhileRunning {
+  protected static class KillRequestWhileRunning extends
+      FailRequestBeforeRunning {
     @Override
     public void transition(TaskAttemptImplNew ta, TaskAttemptEvent event) {
       super.transition(ta, event);
-
-      // TODO Anything else required in this case ? Otherwise remove this
-      // alltogether.
+      ta.taskHeartbeatHandler.unregister(ta.attemptId);
     }
   }
-
+  
   protected SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent>
-      createContainerCompletedTransition() {
-    return new ContainerCompleted();
+      createContainerCompletedWhileRunningTransition() {
+    return new KillRequestWhileRunning();
   }
 
-  protected static class ContainerCompleted implements
-      SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent> {
+  protected static class ContaienrCompletedWhileRunning extends
+      ContainerCompletedBeforeRunning {
     @Override
     public void transition(TaskAttemptImplNew ta, TaskAttemptEvent event) {
-      // TODO is this any different from ContaienrCompletedWhileRunning
-      /*
-       * TODO Ideally - KILL_IN_PROGRESS / FAIL_IN_PROGRESS can be removed. Send
-       * the cleanup event. Cleaner waits till the Container tells it that it's
-       * done.
-       */
+      super.transition(ta, event);
       ta.sendTaskAttemptCleanupEvent();
+      ta.taskHeartbeatHandler.unregister(ta.attemptId);
     }
   }
+
+//  protected SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent>
+//      createContainerCompletedTransition() {
+//    return new ContainerCompleted();
+//  }
+//
+//  protected static class ContainerCompleted implements
+//      SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent> {
+//    @Override
+//    public void transition(TaskAttemptImplNew ta, TaskAttemptEvent event) {
+//      // TODO is this any different from ContaienrCompletedWhileRunning
+//      /*
+//       * TODO Ideally - KILL_IN_PROGRESS / FAIL_IN_PROGRESS can be removed. Send
+//       * the cleanup event. Cleaner waits till the Container tells it that it's
+//       * done.
+//       */
+//      ta.sendTaskAttemptCleanupEvent();
+//    }
+//  }
 
   protected SingleArcTransition<TaskAttemptImplNew, TaskAttemptEvent>
       createFailRequestAfterSuccessTransition() {
@@ -1102,6 +1133,7 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
     public void transition(TaskAttemptImplNew ta, TaskAttemptEvent event) {
       super.transition(ta, event);
       ta.sendTaskAttemptCleanupEvent();
+      // TODO XXX: Any counter updates. 
     }
   }
 
@@ -1114,7 +1146,7 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
     @Override
     public void transition(TaskAttemptImplNew ta, TaskAttemptEvent event) {
       super.transition(ta, event);
-      // TODO Check for this being a MAP task only. Otherwise ignore it.
+      // TODO XXX (Comments Not really required) Check for this being a MAP task only. Otherwise ignore it.
       //... It may be possible for the event to come in for a REDUCE task, since
       // this event and the DONE event are generated in separate threads. Ignore
       // in that case.
@@ -1139,13 +1171,11 @@ public abstract class TaskAttemptImplNew implements TaskAttempt,
 
   // TODO Consolidate all the Failed / Killed methods which only differ in state.
   // Move some of the functionality out to helpers, instead of extending non-related event classes.
-  // Get rid of the IN_PROGRESS states.
   
   // TODO. The transition classes / methods may need to be public for testing.
   // Leaving the return type as SingleArcTransition - so that extension is not required, when testing. 
   // Extension doesn't help anything iac.
 
-  // TODO Rename to remove TA from all methods.
   
   // TODO Can all these create* methods be made more generic...
 }

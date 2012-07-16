@@ -9,6 +9,9 @@ public enum AMSchedulerEventType {
   //Producer: RMCommunicator
   S_CONTAINERS_ALLOCATED,
   
+  //Producer: Container. (Maybe RMCommunicator)
+  S_CONTAINER_COMPLETED,
+  
   // TODO XXX
   //Producer: RMCommunicator. May not be needed.
 //  S_CONTAINER_COMPLETED,

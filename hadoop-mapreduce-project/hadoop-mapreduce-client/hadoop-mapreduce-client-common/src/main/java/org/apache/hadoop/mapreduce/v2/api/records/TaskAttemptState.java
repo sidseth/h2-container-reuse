@@ -24,8 +24,6 @@ public enum TaskAttemptState {
   START_WAIT, 
   RUNNING,
   COMMIT_PENDING, 
-  KILL_IN_PROGRESS, 
-  FAIL_IN_PROGRESS, 
   KILLED,
   FAILED,
   SUCCEEDED,

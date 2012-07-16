@@ -1082,6 +1082,7 @@ protected synchronized void handleEvent(AMSchedulerEvent sEvent) {
   }
 
   private class AssignedRequests {
+    // TODO XXX: Get rid of this map.
     private final Map<ContainerId, TaskAttemptId> containerToAttemptMap =
       new HashMap<ContainerId, TaskAttemptId>();
     private final LinkedHashMap<TaskAttemptId, Container> maps = 

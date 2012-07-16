@@ -6,5 +6,5 @@ public enum AMContainerState {
   IDLE,
   RUNNING,
   STOPPING,
-  COMPLETED
+  COMPLETED,
 }
