@@ -26,6 +26,8 @@ public enum TaskAttemptState {
   COMMIT_PENDING, 
   KILLED,
   FAILED,
+  KILL_IN_PROGRESS,
+  FAIL_IN_PROGRESS,
   SUCCEEDED,
   
   // States in old implementation.

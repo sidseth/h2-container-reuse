@@ -45,7 +45,7 @@ public enum TaskAttemptEventType {
   //Producer: Container / Scheduler.
   // Indicates that the RM considers the container to be complete. Implies the 
   // JVM is done, except in once case. TOOD: document the case.
-  TA_CONTAINER_COMPLETED,
+  TA_TERMINATED,
   
   //Producer: Job
   TA_TOO_MANY_FETCH_FAILURES,

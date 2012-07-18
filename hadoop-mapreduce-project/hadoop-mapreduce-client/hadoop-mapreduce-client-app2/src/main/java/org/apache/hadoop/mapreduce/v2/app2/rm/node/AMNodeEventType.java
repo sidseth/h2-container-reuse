@@ -6,7 +6,7 @@ public enum AMNodeEventType {
   
   //Producer: TaskAttempt
   N_TA_SUCCEEDED,
-  N_TA_FAILED,
+  N_TA_ENDED, // TODO XXX: Maybe rename.
   
   //Producer: RMCommunicator
   N_TURNED_UNHEALTHY,

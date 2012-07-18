@@ -233,7 +233,7 @@ public class LocalContainerLauncher extends AbstractService implements
             // event to task attempt (i.e., move state machine from RUNNING
             // to FAIL_CONTAINER_CLEANUP [and ultimately to FAILED])
             context.getEventHandler().handle(new TaskAttemptEvent(attemptID,
-                TaskAttemptEventType.TA_CONTAINER_COMPLETED));
+                TaskAttemptEventType.TA_TERMINATED));
           } catch (IOException ioe) {
             // if umbilical itself barfs (in error-handler of runSubMap()),
             // we're pretty much hosed, so do what YarnChild main() does

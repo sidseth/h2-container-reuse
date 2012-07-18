@@ -10,7 +10,6 @@ import java.util.concurrent.locks.ReentrantReadWriteLock.WriteLock;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.mapreduce.v2.app2.AppContext;
-import org.apache.hadoop.mapreduce.v2.app2.rm.RMCommunicatorContainerDeAllocateRequestEvent;
 import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainerEvent;
 import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainerEventType;
 import org.apache.hadoop.yarn.api.records.ContainerId;
@@ -22,7 +21,6 @@ import org.apache.hadoop.yarn.state.MultipleArcTransition;
 import org.apache.hadoop.yarn.state.SingleArcTransition;
 import org.apache.hadoop.yarn.state.StateMachine;
 import org.apache.hadoop.yarn.state.StateMachineFactory;
-import org.eclipse.jdt.internal.compiler.problem.ShouldNotImplement;
 
 public class AMNodeImpl implements AMNode {
 
@@ -36,6 +34,7 @@ public class AMNodeImpl implements AMNode {
   private int numFailedTAs = 0;
   private int numSuccessfulTAs = 0;
 
+  @SuppressWarnings("rawtypes")
   protected EventHandler eventHandler;
 
   private final List<ContainerId> containers = new LinkedList<ContainerId>();
@@ -63,7 +62,7 @@ public class AMNodeImpl implements AMNode {
             createTaskAttemptSucceededTransition())
         .addTransition(AMNodeState.ACTIVE,
             EnumSet.of(AMNodeState.ACTIVE, AMNodeState.BLACKLISTED),
-            AMNodeEventType.N_TA_FAILED,
+            AMNodeEventType.N_TA_ENDED,
             createTaskAttemptFailedTransition())
         .addTransition(AMNodeState.ACTIVE, AMNodeState.UNHEALTHY,
             AMNodeEventType.N_TURNED_UNHEALTHY,
@@ -87,12 +86,13 @@ public class AMNodeImpl implements AMNode {
             AMNodeEventType.N_TA_SUCCEEDED,
             createTaskAttemptSucceededWhileBlacklistedTransition())
         .addTransition(AMNodeState.BLACKLISTED, AMNodeState.BLACKLISTED,
-            AMNodeEventType.N_TA_FAILED,
+            AMNodeEventType.N_TA_ENDED,
             createTaskAttemptFailedWhileBlacklistedTransition())
         .addTransition(AMNodeState.BLACKLISTED, AMNodeState.UNHEALTHY,
             AMNodeEventType.N_TURNED_UNHEALTHY,
             createNodeTurnedUnhealthyTransition())
         .addTransition(AMNodeState.BLACKLISTED, AMNodeState.FORCED_ACTIVE, AMNodeEventType.N_BLACKLISTING_DISABLED)
+        .addTransition(AMNodeState.BLACKLISTED, AMNodeState.BLACKLISTED, EnumSet.of(AMNodeEventType.N_TURNED_HEALTHY, AMNodeEventType.N_BLACKLISTING_ENABLED), createGenericErrorTransition())
 
         //Transitions from FORCED_ACTIVE state.
         .addTransition(AMNodeState.FORCED_ACTIVE, AMNodeState.FORCED_ACTIVE,
@@ -102,34 +102,21 @@ public class AMNodeImpl implements AMNode {
             AMNodeEventType.N_TA_SUCCEEDED,
             createTaskAttemptSucceededTransition())
         .addTransition(AMNodeState.FORCED_ACTIVE, AMNodeState.FORCED_ACTIVE,
-            AMNodeEventType.N_TA_FAILED,
+            AMNodeEventType.N_TA_ENDED,
             createTaskAttemptFailedWhileBlacklistedTransition())
         .addTransition(AMNodeState.FORCED_ACTIVE, AMNodeState.UNHEALTHY,
             AMNodeEventType.N_TURNED_UNHEALTHY,
             createNodeTurnedUnhealthyTransition())
         // For now, always to blacklisted - since there's no way to unblacklist
         // a node.
-        .addTransition(AMNodeState.FORCED_ACTIVE, AMNodeState.BLACKLISTED,
-            AMNodeEventType.N_BLACKLISTING_ENABLED) 
+        .addTransition(AMNodeState.FORCED_ACTIVE, EnumSet.of(AMNodeState.BLACKLISTED, AMNodeState.ACTIVE), AMNodeEventType.N_BLACKLISTING_ENABLED, createBlacklistingEnabledTransition())
+        .addTransition(AMNodeState.FORCED_ACTIVE, AMNodeState.FORCED_ACTIVE, EnumSet.of(AMNodeEventType.N_TURNED_HEALTHY, AMNodeEventType.N_BLACKLISTING_DISABLED), createGenericErrorTransition())
             
         // Transitions from UNHEALTHY state.
-        .addTransition(AMNodeState.UNHEALTHY, AMNodeState.UNHEALTHY,
-            AMNodeEventType.N_CONTAINER_ALLOCATED,
-            createContainerAllocatedWhileUnhealthyTransition())
-        .addTransition(AMNodeState.UNHEALTHY, AMNodeState.UNHEALTHY,
-            AMNodeEventType.N_TA_SUCCEEDED)
-        // Ignoring, event from pre-state.
-        .addTransition(AMNodeState.UNHEALTHY, AMNodeState.UNHEALTHY,
-            AMNodeEventType.N_TA_FAILED)
-        // Ignoring. Event from pre-state.
-        .addTransition(AMNodeState.UNHEALTHY, AMNodeState.ACTIVE,
-            AMNodeEventType.N_TURNED_HEALTHY,
-            createNodeTurnedHealthyTransition())
-        .addTransition(
-            AMNodeState.UNHEALTHY,
-            AMNodeState.UNHEALTHY,
-            EnumSet.of(AMNodeEventType.N_BLACKLISTING_DISABLED,
-                AMNodeEventType.N_BLACKLISTING_ENABLED))
+        .addTransition(AMNodeState.UNHEALTHY, AMNodeState.UNHEALTHY, AMNodeEventType.N_CONTAINER_ALLOCATED, createContainerAllocatedWhileUnhealthyTransition())
+        .addTransition(AMNodeState.UNHEALTHY, AMNodeState.UNHEALTHY, EnumSet.of(AMNodeEventType.N_TA_SUCCEEDED, AMNodeEventType.N_TA_ENDED, AMNodeEventType.N_BLACKLISTING_DISABLED, AMNodeEventType.N_BLACKLISTING_ENABLED))
+        .addTransition(AMNodeState.UNHEALTHY, AMNodeState.ACTIVE, AMNodeEventType.N_TURNED_HEALTHY, createNodeTurnedHealthyTransition())
+        .addTransition(AMNodeState.UNHEALTHY, AMNodeState.UNHEALTHY, AMNodeEventType.N_TURNED_UNHEALTHY, createGenericErrorTransition())
 
         .installTopology();
   }
@@ -244,11 +231,14 @@ public class AMNodeImpl implements AMNode {
       MultipleArcTransition<AMNodeImpl, AMNodeEvent, AMNodeState> {
     @Override
     public AMNodeState transition(AMNodeImpl node, AMNodeEvent nEvent) {
-      node.numFailedTAs++;
-      boolean shouldBlacklist = node.shouldBlacklistNode();
-      if (shouldBlacklist) {
-        return AMNodeState.BLACKLISTED;
-        // TODO XXX: An event likely needs to go out to the scheduler.
+      AMNodeEventTaskAttemptEnded event = (AMNodeEventTaskAttemptEnded) nEvent;
+      if (event.failed()) {
+        node.numFailedTAs++;
+        boolean shouldBlacklist = node.shouldBlacklistNode();
+        if (shouldBlacklist) {
+          return AMNodeState.BLACKLISTED;
+          // TODO XXX: An event likely needs to go out to the scheduler.
+        }
       }
       return AMNodeState.ACTIVE;
     }
@@ -271,6 +261,20 @@ public class AMNodeImpl implements AMNode {
       // Resetting counters.
       node.numFailedTAs = 0;
       node.numSuccessfulTAs = 0;
+    }
+  }
+
+  protected SingleArcTransition<AMNodeImpl, AMNodeEvent> createGenericErrorTransition() {
+    return new GenericError();
+  }
+
+  protected static class GenericError implements
+      SingleArcTransition<AMNodeImpl, AMNodeEvent> {
+    @Override
+    public void transition(AMNodeImpl node, AMNodeEvent nEvent) {
+      LOG.warn("Invalid event: " + nEvent.getType() + " while in state: "
+          + node.getState() + ". Ignoring." + " Event: " + nEvent);
+
     }
   }
   
@@ -307,11 +311,9 @@ public class AMNodeImpl implements AMNode {
     @Override
     public void transition(AMNodeImpl node, AMNodeEvent nEvent) {
       AMNodeEventContainerAllocated event = (AMNodeEventContainerAllocated) nEvent;
-      // Release the container immediately.
       // Maybe send out a StopContainer message to the container.
-      node.sendEvent(new RMCommunicatorContainerDeAllocateRequestEvent(event
-          .getContainerId()));
-      node.sendEvent(new AMContainerEvent(event.getContainerId(), AMContainerEventType.C_STOP_REQUEST));
+      node.sendEvent(new AMContainerEvent(event.getContainerId(),
+          AMContainerEventType.C_STOP_REQUEST));
     }
   }
 
@@ -335,7 +337,9 @@ public class AMNodeImpl implements AMNode {
       SingleArcTransition<AMNodeImpl, AMNodeEvent> {
     @Override
     public void transition(AMNodeImpl node, AMNodeEvent nEvent) {
-      node.numFailedTAs++;
+      AMNodeEventTaskAttemptEnded event = (AMNodeEventTaskAttemptEnded) nEvent;
+      if (event.failed())
+        node.numFailedTAs++;
     }
   }
 
@@ -351,7 +355,8 @@ public class AMNodeImpl implements AMNode {
       LOG.info("Node: " + node.getNodeId()
           + " got allocated a contaienr with id: " + event.getContainerId()
           + " while in UNHEALTHY state. Releasing it.");
-      node.sendEvent(new RMCommunicatorContainerDeAllocateRequestEvent(event.getContainerId()));
+      node.sendEvent(new AMContainerEvent(event.getContainerId(),
+          AMContainerEventType.C_NODE_FAILED));
     }
   }
 
@@ -365,5 +370,11 @@ public class AMNodeImpl implements AMNode {
       node.pastContainers.addAll(node.containers);
       node.containers.clear();
     }
+  }
+
+  @Override
+  public boolean isUsable() {
+    // TODO Auto-generated method stub
+    return false;
   }
 }

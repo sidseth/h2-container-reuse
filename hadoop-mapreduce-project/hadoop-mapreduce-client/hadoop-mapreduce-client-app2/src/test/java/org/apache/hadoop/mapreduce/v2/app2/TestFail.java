@@ -195,7 +195,7 @@ public class TestFail {
     app.waitForState(attempt, TaskAttemptState.ASSIGNED);
     app.getDispatcher().getEventHandler().handle(
         new TaskAttemptEvent(attempt.getID(),
-            TaskAttemptEventType.TA_CONTAINER_COMPLETED));
+            TaskAttemptEventType.TA_TERMINATED));
     app.waitForState(job, JobState.FAILED);
   }
 
