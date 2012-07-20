@@ -65,6 +65,7 @@ import org.apache.hadoop.security.Credentials;
 import org.apache.hadoop.security.token.Token;
 import org.apache.hadoop.util.StringUtils;
 import org.apache.hadoop.yarn.Clock;
+import org.apache.hadoop.yarn.api.records.Container;
 import org.apache.hadoop.yarn.api.records.ContainerId;
 import org.apache.hadoop.yarn.api.records.NodeId;
 import org.apache.hadoop.yarn.api.records.Resource;
@@ -128,7 +129,7 @@ public abstract class TaskAttemptImpl implements TaskAttempt,
   private boolean speculatorContainerRequestSent = false;
   
   
-  private static final StateMachineFactory
+  private static StateMachineFactory
       <TaskAttemptImpl, TaskAttemptState, TaskAttemptEventType, TaskAttemptEvent>
       stateMachineFactory
       = new StateMachineFactory
@@ -142,6 +143,7 @@ public abstract class TaskAttemptImpl implements TaskAttempt,
   
   // TODO XXX: Rename all CONTAINER_COMPLETED transitions to TERMINATED.
   private void initStateMachine() {
+    stateMachineFactory = 
     stateMachineFactory
         .addTransition(TaskAttemptState.NEW, TaskAttemptState.START_WAIT, TaskAttemptEventType.TA_SCHEDULE, createScheduleTransition())
         .addTransition(TaskAttemptState.NEW, TaskAttemptState.NEW, TaskAttemptEventType.TA_DIAGNOSTICS_UPDATE, DIAGNOSTIC_INFORMATION_UPDATE_TRANSITION)
@@ -244,8 +246,10 @@ public abstract class TaskAttemptImpl implements TaskAttempt,
     this.reportedStatus = new TaskAttemptStatus();
     synchronized(stateMachineFactory) {
       if (!stateMachineInited) {
+        LOG.info("XXX: Initializing State Machine Factory");
         DIAGNOSTIC_INFORMATION_UPDATE_TRANSITION = createDiagnosticUpdateTransition();
         initStateMachine();
+        stateMachineInited = true;
       }
     }
     this.stateMachine = stateMachineFactory.make(this);
@@ -890,10 +894,12 @@ public abstract class TaskAttemptImpl implements TaskAttempt,
 
       // TODO XXX What all changes here after CLC construction is done. Remove TODOs after that.
       
-      ta.containerId = event.getContainer().getId();
-      ta.containerNodeId = event.getContainer().getNodeId();
+      Container container = ta.appContext.getContainer(event.getContainerId()).getContainer();
+      
+      ta.containerId = event.getContainerId();
+      ta.containerNodeId = container.getNodeId();
       ta.containerMgrAddress = ta.containerNodeId.toString();
-      ta.nodeHttpAddress = event.getContainer().getNodeHttpAddress();
+      ta.nodeHttpAddress = container.getNodeHttpAddress();
       ta.nodeRackName = RackResolver.resolve(ta.containerNodeId.getHost())
           .getNetworkLocation();
       // TODO ContainerToken not required in TA.

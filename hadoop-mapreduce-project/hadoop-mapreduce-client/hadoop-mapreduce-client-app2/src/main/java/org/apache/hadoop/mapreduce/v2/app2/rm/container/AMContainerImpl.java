@@ -38,7 +38,6 @@ import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptEventKillRequest;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptEventTerminated;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptEventType;
-import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptKillEvent;
 import org.apache.hadoop.mapreduce.v2.app2.rm.AMSchedulerEventContaienrCompleted;
 import org.apache.hadoop.mapreduce.v2.app2.rm.AMSchedulerTALaunchRequestEvent;
 import org.apache.hadoop.mapreduce.v2.app2.rm.NMCommunicatorLaunchRequestEvent;
@@ -114,7 +113,7 @@ public class AMContainerImpl implements AMContainer {
   protected EventHandler eventHandler;
 
   private static boolean stateMachineInited = false;
-  private static final StateMachineFactory
+  private static StateMachineFactory
       <AMContainerImpl, AMContainerState, AMContainerEventType, AMContainerEvent> 
       stateMachineFactory = 
       new StateMachineFactory<AMContainerImpl, AMContainerState, AMContainerEventType, AMContainerEvent>(
@@ -123,6 +122,7 @@ public class AMContainerImpl implements AMContainer {
   private final StateMachine<AMContainerState, AMContainerEventType, AMContainerEvent> stateMachine;
 
   private void initStateMachineFactory() {
+    stateMachineFactory = 
     stateMachineFactory
         .addTransition(AMContainerState.ALLOCATED, AMContainerState.LAUNCHING, AMContainerEventType.C_START_REQUEST, createLaunchRequestTransition())
         .addTransition(AMContainerState.ALLOCATED, AMContainerState.COMPLETED, AMContainerEventType.C_ASSIGN_TA, createAssignTaskAttemptAtAllocatedTransition())
@@ -316,6 +316,7 @@ public class AMContainerImpl implements AMContainer {
       // launch. Save AM resources.
       
       container.jvmId = new WrappedJvmID(taEvent.getRemoteTask().getJobID(), taEvent.getRemoteTask().isMapTask(), container.containerId.getId());
+      
       container.clc = createContainerLaunchContext(
           event.getApplicationAcls(), container.getContainerId(),
           container.appContext.getJob(event.getJobId()).getConf(), taEvent.getJobToken(),
@@ -462,6 +463,7 @@ public class AMContainerImpl implements AMContainer {
     public void transition(AMContainerImpl container, AMContainerEvent cEvent) {
       AMContainerEventLaunched event = (AMContainerEventLaunched) cEvent;
       container.shufflePort = event.getShufflePort();
+      container.taskAttemptListener.registerRunningJvm(container.jvmId, container.containerId);
       container.containerHeartbeatHandler.register(container.containerId);
     }
   }
@@ -801,8 +803,7 @@ public class AMContainerImpl implements AMContainer {
   }
   
   private void killTaskAttempt(TaskAttemptId attemptId) {
-    sendEvent(new TaskAttemptKillEvent(attemptId,
-        "The node running the task attempt was marked as bad"));
+    sendEvent(new TaskAttemptEventKillRequest(attemptId, "The node running the task attempt was marked as bad"));
   }
   
   protected SingleArcTransition<AMContainerImpl, AMContainerEvent>

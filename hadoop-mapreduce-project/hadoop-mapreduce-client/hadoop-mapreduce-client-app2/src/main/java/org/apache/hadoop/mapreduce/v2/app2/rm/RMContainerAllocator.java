@@ -105,7 +105,8 @@ public class RMContainerAllocator extends AbstractService
   
   private final AppContext appContext;
   private final Clock clock;
-  private final Job job;
+  private Job job;
+  private final JobId jobId;
   private final RMContainerRequestor requestor;
   @SuppressWarnings("rawtypes")
   private final EventHandler eventHandler;
@@ -181,7 +182,8 @@ public class RMContainerAllocator extends AbstractService
     ApplicationId appId = appContext.getApplicationID();
     JobID id = TypeConverter.fromYarn(appId);
     JobId jobId = TypeConverter.toYarn(id);
-    this.job = appContext.getJob(jobId);
+    this.jobId = jobId;
+    
     this.containerMap = appContext.getAllContainers();
   }
 
@@ -223,6 +225,7 @@ public class RMContainerAllocator extends AbstractService
             LOG.error("Error in handling event type " + event.getType()
                 + " to the ContainreAllocator", t);
             // Kill the AM
+            LOG.info("XXX: Sednig a INTERNAL JOB ERROR");
             eventHandler.handle(new JobEvent(job.getID(),
               JobEventType.INTERNAL_ERROR));
             return;
@@ -235,6 +238,7 @@ public class RMContainerAllocator extends AbstractService
     scheduleTimer = new Timer("AMSchedulerTimer", true);
     scheduleTimerTask = new ScheduleTimerTask();
     scheduleTimer.scheduleAtFixedRate(scheduleTimerTask, scheduleInterval, scheduleInterval);
+    this.job = appContext.getJob(jobId);
     
     super.start();
   }
@@ -266,10 +270,11 @@ public class RMContainerAllocator extends AbstractService
 
     @Override
     public void run() {
+      // TODO XXX XXX: Reduces are not being shceduled. Forcing them via this for now. Figure out when reduce schedule should be recomputed.
       // TODO XXX. Does this need to be stopped before the service stop()
       if (clock.getTime() - lastScheduleTime > scheduleInterval && shouldRun) {
         handle(new AMSchedulerEventContainersAllocated(
-            Collections.<ContainerId> emptyList(), false));
+            Collections.<ContainerId> emptyList(), true));
         // Sending a false. Just try to flush available containers.
         // The decision to schedule reduces may need to be based on available containers.
       }
@@ -402,6 +407,8 @@ protected synchronized void handleEvent(AMSchedulerEvent sEvent) {
      * Send out Container_START / Container_TA_ASSIGNED events.
      */
     // TODO XXX: Logging of the assigned containerIds.
+    
+    // TODO XXX: Synchronize with assign()
     LOG.info("Processing the event " + event.toString());
     availableContainerIds.addAll(event.getContainerIds());
     if (event.didHeadroomChange() || event.getContainerIds().size() > 0) {
@@ -420,6 +427,7 @@ protected synchronized void handleEvent(AMSchedulerEvent sEvent) {
     if (availableContainerIds.size() > 0) {
       LOG.info("Before Assign: " + getStat());
       scheduledRequests.assign(availableContainerIds);
+      availableContainerIds.clear();
       LOG.info("After Assign: " + getStat());
       
     }

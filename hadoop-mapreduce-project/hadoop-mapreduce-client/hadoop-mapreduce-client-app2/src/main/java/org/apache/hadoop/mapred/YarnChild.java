@@ -71,7 +71,7 @@ class YarnChild {
   static volatile TaskAttemptID taskid = null;
 
   public static void main(String[] args) throws Throwable {
-    LOG.debug("Child starting");
+    LOG.info("XXX: Child starting");
 
     final JobConf defaultConf = new JobConf();
     defaultConf.addResource(MRJobConfig.JOB_CONF_FILE);

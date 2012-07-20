@@ -65,7 +65,9 @@ import org.apache.hadoop.mapreduce.v2.app2.job.event.JobMapTaskRescheduledEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.JobTaskAttemptCompletedEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.JobTaskEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptEvent;
+import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptEventKillRequest;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptEventType;
+import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptScheduleEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskEventType;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskTAttemptEvent;
@@ -586,14 +588,8 @@ public abstract class TaskImpl implements Task, EventHandler<TaskEvent> {
 
     ++numberUncompletedAttempts;
     //schedule the nextAttemptNumber
-    if (failedAttempts > 0) {
-      // TODO XXX: Fix. TA_RESCHEDULE is no longer a valid event.
-      eventHandler.handle(new TaskAttemptEvent(attempt.getID(),
-        TaskAttemptEventType.TA_RESCHEDULE));
-    } else {
-      eventHandler.handle(new TaskAttemptEvent(attempt.getID(),
-          TaskAttemptEventType.TA_SCHEDULE));
-    }
+    eventHandler.handle(new TaskAttemptScheduleEvent(attempt.getID(), TaskAttemptEventType.TA_SCHEDULE, failedAttempts > 0));
+    
   }
 
   @Override
@@ -751,8 +747,9 @@ public abstract class TaskImpl implements Task, EventHandler<TaskEvent> {
         LOG.info(task.commitAttempt
             + " already given a go for committing the task output, so killing "
             + attemptID);
-        task.eventHandler.handle(new TaskAttemptEvent(
-            attemptID, TaskAttemptEventType.TA_KILL));
+        task.eventHandler.handle(new TaskAttemptEventKillRequest(attemptID, ""));
+//        task.eventHandler.handle(new TaskAttemptEvent(
+//            attemptID, TaskAttemptEventType.TA_KILL));
       }
     }
   }
@@ -784,9 +781,10 @@ public abstract class TaskImpl implements Task, EventHandler<TaskEvent> {
             //  other reasons.
             !attempt.isFinished()) {
           LOG.info("Issuing kill to other attempt " + attempt.getID());
-          task.eventHandler.handle(
-              new TaskAttemptEvent(attempt.getID(), 
-                  TaskAttemptEventType.TA_KILL));
+          task.eventHandler.handle(new TaskAttemptEventKillRequest(attempt.getID(), ""));
+//          task.eventHandler.handle(
+//              new TaskAttemptEvent(attempt.getID(), 
+//                  TaskAttemptEventType.TA_KILL));
         }
       }
       task.finished(TaskState.SUCCEEDED);
@@ -988,9 +986,10 @@ public abstract class TaskImpl implements Task, EventHandler<TaskEvent> {
 
   private void killUnfinishedAttempt(TaskAttempt attempt, String logMsg) {
     if (attempt != null && !attempt.isFinished()) {
-      eventHandler.handle(
-          new TaskAttemptEvent(attempt.getID(),
-              TaskAttemptEventType.TA_KILL));
+      eventHandler.handle(new TaskAttemptEventKillRequest(attempt.getID(), ""));
+//      eventHandler.handle(
+//          new TaskAttemptEvent(attempt.getID(),
+//              TaskAttemptEventType.TA_KILL));
     }
   }
 

@@ -89,8 +89,8 @@ import org.apache.hadoop.mapreduce.v2.app2.job.event.JobTaskAttemptFetchFailureE
 import org.apache.hadoop.mapreduce.v2.app2.job.event.JobTaskEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.JobUpdatedNodesEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptEvent;
+import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptEventKillRequest;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptEventType;
-import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptKillEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskEventType;
 import org.apache.hadoop.mapreduce.v2.app2.metrics.MRAppMetrics;
@@ -972,7 +972,7 @@ public class JobImpl implements org.apache.hadoop.mapreduce.v2.app2.job.Job,
         if(TaskType.MAP == id.getTaskId().getTaskType()) {
           // reschedule only map tasks because their outputs maybe unusable
           LOG.info(mesg + ". AttemptId:" + id);
-          eventHandler.handle(new TaskAttemptKillEvent(id, mesg));
+          eventHandler.handle(new TaskAttemptEventKillRequest(id, mesg));
         }
       }
     }
@@ -1387,7 +1387,7 @@ public class JobImpl implements org.apache.hadoop.mapreduce.v2.app2.job.Job,
           LOG.info("Too many fetch-failures for output of task attempt: " + 
               mapId + " ... raising fetch failure to map");
           job.eventHandler.handle(new TaskAttemptEvent(mapId, 
-              TaskAttemptEventType.TA_TOO_MANY_FETCH_FAILURE));
+              TaskAttemptEventType.TA_TOO_MANY_FETCH_FAILURES));
           job.fetchFailuresMapping.remove(mapId);
         }
       }

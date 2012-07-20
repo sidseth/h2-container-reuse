@@ -43,7 +43,7 @@ public class AMNodeImpl implements AMNode {
   private final List<ContainerId> pastContainers = new LinkedList<ContainerId>();
 
   private static boolean stateMachineInited = false;
-  private static final StateMachineFactory
+  private static StateMachineFactory
       <AMNodeImpl, AMNodeState, AMNodeEventType, AMNodeEvent> 
       stateMachineFactory = 
       new StateMachineFactory<AMNodeImpl, AMNodeState, AMNodeEventType, AMNodeEvent>(
@@ -52,6 +52,7 @@ public class AMNodeImpl implements AMNode {
   private final StateMachine<AMNodeState, AMNodeEventType, AMNodeEvent> stateMachine;
 
   private void initStateMachineFactory() {
+    stateMachineFactory = 
     stateMachineFactory
         // Transitions from ACTIVE state.
         .addTransition(AMNodeState.ACTIVE, AMNodeState.ACTIVE,

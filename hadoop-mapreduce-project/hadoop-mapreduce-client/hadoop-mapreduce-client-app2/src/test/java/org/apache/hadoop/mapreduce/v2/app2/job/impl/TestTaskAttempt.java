@@ -44,7 +44,7 @@ import org.apache.hadoop.fs.RawLocalFileSystem;
 import org.apache.hadoop.io.DataInputByteBuffer;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapred.JobConf;
-import org.apache.hadoop.mapred.MapTaskAttemptImpl;
+import org.apache.hadoop.mapred.MapTaskAttemptImpl2;
 import org.apache.hadoop.mapred.WrappedJvmID;
 import org.apache.hadoop.mapreduce.JobCounter;
 import org.apache.hadoop.mapreduce.MRJobConfig;
@@ -140,7 +140,7 @@ public class TestTaskAttempt{
         new Text("tokenkind"), new Text("tokenservice"));
     
     TaskAttemptImpl taImpl =
-        new MapTaskAttemptImpl(taskId, 1, eventHandler, jobFile, 1,
+        new MapTaskAttemptImpl2(taskId, 1, eventHandler, jobFile, 1,
             mock(TaskSplitMetaInfo.class), jobConf, taListener,
             mock(OutputCommitter.class), jobToken, credentials,
             new SystemClock(), null);
@@ -343,7 +343,7 @@ public class TestTaskAttempt{
     JobConf jobConf = new JobConf();
     OutputCommitter outputCommitter = mock(OutputCommitter.class);
     TaskAttemptImpl taImpl =
-        new MapTaskAttemptImpl(taskId, 1, eventHandler, jobFile, 1,
+        new MapTaskAttemptImpl2(taskId, 1, eventHandler, jobFile, 1,
             taskSplitMetaInfo, jobConf, taListener, outputCommitter, null,
             null, clock, null);
     return taImpl;
@@ -428,7 +428,7 @@ public class TestTaskAttempt{
     when(splits.getLocations()).thenReturn(new String[] {"127.0.0.1"});
     
     TaskAttemptImpl taImpl =
-      new MapTaskAttemptImpl(taskId, 1, eventHandler, jobFile, 1,
+      new MapTaskAttemptImpl2(taskId, 1, eventHandler, jobFile, 1,
           splits, jobConf, taListener,
           mock(OutputCommitter.class), mock(Token.class), new Credentials(),
           new SystemClock(), null);
@@ -483,7 +483,7 @@ public class TestTaskAttempt{
     when(resource.getMemory()).thenReturn(1024);
 
     TaskAttemptImpl taImpl =
-      new MapTaskAttemptImpl(taskId, 1, eventHandler, jobFile, 1,
+      new MapTaskAttemptImpl2(taskId, 1, eventHandler, jobFile, 1,
           splits, jobConf, taListener,
           mock(OutputCommitter.class), mock(Token.class), new Credentials(),
           new SystemClock(), appCtx);
@@ -539,7 +539,7 @@ public class TestTaskAttempt{
     when(resource.getMemory()).thenReturn(1024);
 
     TaskAttemptImpl taImpl =
-      new MapTaskAttemptImpl(taskId, 1, eventHandler, jobFile, 1,
+      new MapTaskAttemptImpl2(taskId, 1, eventHandler, jobFile, 1,
           splits, jobConf, taListener,
           mock(OutputCommitter.class), mock(Token.class), new Credentials(),
           new SystemClock(), appCtx);

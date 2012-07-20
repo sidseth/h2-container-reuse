@@ -97,9 +97,9 @@ public class TaskCleanerImpl extends AbstractService implements TaskCleaner {
       } catch (Exception e) {
         LOG.warn("Task cleanup failed for attempt " + event.getAttemptID(), e);
       }
-      context.getEventHandler().handle(
-          new TaskAttemptEvent(event.getAttemptID(), 
-              TaskAttemptEventType.TA_CLEANUP_DONE));
+//      context.getEventHandler().handle(
+//          new TaskAttemptEvent(event.getAttemptID(), 
+//              TaskAttemptEventType.TA_CLEANUP_DONE));
     }
   }
 

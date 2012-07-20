@@ -62,7 +62,7 @@ import org.apache.hadoop.yarn.service.AbstractService;
  * done-dir. JobHistory implementation is in this package to access package
  * private classes.
  */
-public class JobHistoryEventHandler extends AbstractService
+public class JobHistoryEventHandler2 extends AbstractService
     implements EventHandler<JobHistoryEvent> {
 
   private final AppContext context;
@@ -94,7 +94,7 @@ public class JobHistoryEventHandler extends AbstractService
   private final Object lock = new Object();
 
   private static final Log LOG = LogFactory.getLog(
-      JobHistoryEventHandler.class);
+      JobHistoryEventHandler2.class);
 
   protected static final Map<JobId, MetaInfo> fileMap =
     Collections.<JobId,MetaInfo>synchronizedMap(new HashMap<JobId,MetaInfo>());
@@ -102,7 +102,7 @@ public class JobHistoryEventHandler extends AbstractService
   // Has a signal (SIGTERM etc) been issued?
   protected volatile boolean isSignalled = false;
 
-  public JobHistoryEventHandler(AppContext context, int startCount) {
+  public JobHistoryEventHandler2(AppContext context, int startCount) {
     super("JobHistoryEventHandler");
     this.context = context;
     this.startCount = startCount;

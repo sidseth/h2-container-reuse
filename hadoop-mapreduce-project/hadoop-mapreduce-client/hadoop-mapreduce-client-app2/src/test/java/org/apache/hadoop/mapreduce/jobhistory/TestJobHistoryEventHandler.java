@@ -345,7 +345,7 @@ public class TestJobHistoryEventHandler {
   }
 }
 
-class JHEvenHandlerForTest extends JobHistoryEventHandler {
+class JHEvenHandlerForTest extends JobHistoryEventHandler2 {
 
   private EventWriter eventWriter;
   volatile int handleEventCompleteCalls = 0;
@@ -378,7 +378,7 @@ class JHEvenHandlerForTest extends JobHistoryEventHandler {
 /**
  * Class to help with testSigTermedFunctionality
  */
-class JHEventHandlerForSigtermTest extends JobHistoryEventHandler {
+class JHEventHandlerForSigtermTest extends JobHistoryEventHandler2 {
   private MetaInfo metaInfo;
   public JHEventHandlerForSigtermTest(AppContext context, int startCount) {
     super(context, startCount);

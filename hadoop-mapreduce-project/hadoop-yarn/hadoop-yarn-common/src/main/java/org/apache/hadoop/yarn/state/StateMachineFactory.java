@@ -291,6 +291,7 @@ final public class StateMachineFactory
     //  and this code only gets called from inside a working InnerStateMachine .
     Map<EVENTTYPE, Transition<OPERAND, STATE, EVENTTYPE, EVENT>> transitionMap
       = stateMachineTable.get(oldState);
+//    printStateMachineTable();
     if (transitionMap != null) {
       Transition<OPERAND, STATE, EVENTTYPE, EVENT> transition
           = transitionMap.get(eventType);
@@ -301,6 +302,23 @@ final public class StateMachineFactory
     throw new InvalidStateTransitonException(oldState, eventType);
   }
 
+  void printStateMachineTable() {
+    Set<STATE> states = stateMachineTable.keySet();
+    for (STATE s : states) {
+      log("SourceState: " + s);
+      Map<EVENTTYPE, Transition<OPERAND, STATE, EVENTTYPE, EVENT>> transitionMap = stateMachineTable.get(s);
+      Set<EVENTTYPE> eventTypes = transitionMap.keySet();
+      for (EVENTTYPE e : eventTypes) {
+        log("\tTriggerEvent:" + e);
+        log("\tTarget: " + transitionMap.get(e).toString());
+      }
+    }
+  }
+  
+  void log(String message) {
+    System.err.println(message);
+  }
+  
   private synchronized void maybeMakeStateMachineTable() {
     if (stateMachineTable == null) {
       makeStateMachineTable();
@@ -358,6 +376,14 @@ final public class StateMachineFactory
       }
       return postState;
     }
+    
+//    @Override
+//    public String toString() {
+//      StringBuilder sb = new StringBuilder();
+//      sb.append("Changing line number");
+////      sb.append("TargetState: " + postState == null ? "null" : postState + ", Action: " + hook == null ? "null" : hook.getClass().getCanonicalName());
+//      return sb.toString();
+//    }
   }
 
   private class MultipleInternalArc
@@ -384,6 +410,12 @@ final public class StateMachineFactory
       }
       return postState;
     }
+    
+//    public String toString() {
+//      StringBuilder sb = new StringBuilder();
+////      sb.append("TargetStates: " + validPostStates + ", Action: " + hook.getClass().getCanonicalName());
+//      return sb.toString();
+//    }
   }
 
   /* 

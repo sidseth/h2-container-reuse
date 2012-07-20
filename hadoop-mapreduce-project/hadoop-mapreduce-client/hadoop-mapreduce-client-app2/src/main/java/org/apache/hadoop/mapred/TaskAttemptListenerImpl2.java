@@ -47,6 +47,7 @@ import org.apache.hadoop.mapreduce.v2.app2.job.Task;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptDiagnosticsUpdateEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptEventType;
+import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptRemoteStartEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptStatusUpdateEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptStatusUpdateEvent.TaskAttemptStatus;
 import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainerImpl;
@@ -66,7 +67,7 @@ import org.apache.hadoop.yarn.service.CompositeService;
  * methods/classes.
  */
 @SuppressWarnings("unchecked")
-public class TaskAttemptListenerImpl extends CompositeService 
+public class TaskAttemptListenerImpl2 extends CompositeService 
     implements TaskUmbilicalProtocol, TaskAttemptListener {
 
   // TODO XXX: Ideally containerId registration and unregistration should be taken care of by the Container.
@@ -80,7 +81,7 @@ public class TaskAttemptListenerImpl extends CompositeService
   private static final JvmTask TASK_FOR_INVALID_JVM = new JvmTask(null, true);
   private static final JvmTask UNASSIGNED_TASK = new JvmTask(null, false);
 
-  private static final Log LOG = LogFactory.getLog(TaskAttemptListenerImpl.class);
+  private static final Log LOG = LogFactory.getLog(TaskAttemptListenerImpl2.class);
 
   private final AppContext context;
   
@@ -101,9 +102,9 @@ public class TaskAttemptListenerImpl extends CompositeService
   
   
   
-  public TaskAttemptListenerImpl(AppContext context, TaskHeartbeatHandler thh,
+  public TaskAttemptListenerImpl2(AppContext context, TaskHeartbeatHandler thh,
       ContainerHeartbeatHandler chh, JobTokenSecretManager jobTokenSecretManager) {
-    super(TaskAttemptListenerImpl.class.getName());
+    super(TaskAttemptListenerImpl2.class.getName());
     this.context = context;
     this.jobTokenSecretManager = jobTokenSecretManager;
     this.taskHeartbeatHandler = thh;
@@ -244,7 +245,7 @@ public class TaskAttemptListenerImpl extends CompositeService
     org.apache.hadoop.mapreduce.v2.api.records.TaskAttemptId attemptID =
         TypeConverter.toYarn(taskAttemptID);
     context.getEventHandler().handle(
-        new TaskAttemptEvent(attemptID, TaskAttemptEventType.TA_FAILMSG));
+        new TaskAttemptEvent(attemptID, TaskAttemptEventType.TA_FAILED));
   }
 
   @Override
@@ -258,7 +259,7 @@ public class TaskAttemptListenerImpl extends CompositeService
     org.apache.hadoop.mapreduce.v2.api.records.TaskAttemptId attemptID =
         TypeConverter.toYarn(taskAttemptID);
     context.getEventHandler().handle(
-        new TaskAttemptEvent(attemptID, TaskAttemptEventType.TA_FAILMSG));
+        new TaskAttemptEvent(attemptID, TaskAttemptEventType.TA_FAILED));
   }
 
   @Override
@@ -414,11 +415,11 @@ public class TaskAttemptListenerImpl extends CompositeService
   }
 
   @Override
-  public JvmTask getTask(JvmContext context) throws IOException {
+  public JvmTask getTask(JvmContext jvmContext) throws IOException {
 
     // A rough imitation of code from TaskTracker.
 
-    JVMId jvmId = context.jvmId;
+    JVMId jvmId = jvmContext.jvmId;
     LOG.info("JVM with ID : " + jvmId + " asked for a task");
     
     JvmTask jvmTask = null;
@@ -438,10 +439,13 @@ public class TaskAttemptListenerImpl extends CompositeService
       org.apache.hadoop.mapred.Task task = pullTaskAttempt(containerId);
       if (task == null) {
         LOG.info("No task currently assigned to JVM with ID: " + jvmId);
-        jvmTask = UNASSIGNED_TASK;
+        jvmTask = null;
       } else {
+        TaskAttemptId yTaskAttemptId = TypeConverter.toYarn(task.getTaskID());
+        // TODO XXX: Generate this event properly - proper params etc etc etc.s
+        context.getEventHandler().handle(new TaskAttemptRemoteStartEvent(yTaskAttemptId, containerId, null, 8080));
         LOG.info("JVM with ID: " + jvmId + " given task: " + task.getTaskID());
-        registerTaskAttempt(TypeConverter.toYarn(task.getTaskID()), wJvmID);
+        registerTaskAttempt(yTaskAttemptId, wJvmID);
         jvmTask = new JvmTask(task, false);
       }
     }
@@ -474,6 +478,7 @@ public class TaskAttemptListenerImpl extends CompositeService
 
   @Override
   public void registerRunningJvm(WrappedJvmID jvmID, ContainerId containerId) {
+    LOG.info("XXX: JvmRegistration: " + jvmID + ", ContaienrId: " + containerId);
     jvmIDToContainerIdMap.putIfAbsent(jvmID, containerId);
   }
   

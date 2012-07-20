@@ -36,7 +36,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.mapred.FileOutputCommitter;
 import org.apache.hadoop.mapred.JobConf;
-import org.apache.hadoop.mapred.TaskAttemptListenerImpl;
+import org.apache.hadoop.mapred.TaskAttemptListenerImpl2;
 import org.apache.hadoop.mapreduce.MRJobConfig;
 import org.apache.hadoop.mapreduce.OutputCommitter;
 import org.apache.hadoop.mapreduce.OutputFormat;
@@ -45,7 +45,7 @@ import org.apache.hadoop.mapreduce.TypeConverter;
 import org.apache.hadoop.mapreduce.jobhistory.AMStartedEvent;
 import org.apache.hadoop.mapreduce.jobhistory.ContainerHeartbeatHandler;
 import org.apache.hadoop.mapreduce.jobhistory.JobHistoryEvent;
-import org.apache.hadoop.mapreduce.jobhistory.JobHistoryEventHandler;
+import org.apache.hadoop.mapreduce.jobhistory.JobHistoryEventHandler2;
 import org.apache.hadoop.mapreduce.jobhistory.JobHistoryParser.TaskInfo;
 import org.apache.hadoop.mapreduce.security.token.JobTokenSecretManager;
 import org.apache.hadoop.mapreduce.task.TaskAttemptContextImpl;
@@ -78,8 +78,10 @@ import org.apache.hadoop.mapreduce.v2.app2.rm.RMCommunicatorEventType;
 import org.apache.hadoop.mapreduce.v2.app2.rm.RMContainerAllocator;
 import org.apache.hadoop.mapreduce.v2.app2.rm.RMContainerRequestor;
 import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainer;
+import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainerEventType;
 import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainerMap;
 import org.apache.hadoop.mapreduce.v2.app2.rm.node.AMNode;
+import org.apache.hadoop.mapreduce.v2.app2.rm.node.AMNodeEventType;
 import org.apache.hadoop.mapreduce.v2.app2.rm.node.AMNodeMap;
 import org.apache.hadoop.mapreduce.v2.app2.speculate.DefaultSpeculator;
 import org.apache.hadoop.mapreduce.v2.app2.speculate.Speculator;
@@ -170,7 +172,7 @@ public class MRAppMaster extends CompositeService {
   private boolean newApiCommitter;
   private OutputCommitter committer;
   private JobEventDispatcher jobEventDispatcher;
-  private JobHistoryEventHandler jobHistoryEventHandler;
+  private JobHistoryEventHandler2 jobHistoryEventHandler;
   private boolean inRecovery = false;
   private SpeculatorEventDispatcher speculatorEventDispatcher;
   private RMContainerRequestor rmContainerRequestor;
@@ -267,8 +269,11 @@ public class MRAppMaster extends CompositeService {
 
     containers = new AMContainerMap(containerHeartbeatHandler, taskAttemptListener, dispatcher.getEventHandler(), context);
     addIfService(containers);
+    dispatcher.register(AMContainerEventType.class, containers);
     
     nodes = new AMNodeMap(dispatcher.getEventHandler(), context);
+    addIfService(nodes);
+    dispatcher.register(AMNodeEventType.class, nodes);
     
     //service to do the task cleanup
     taskCleaner = createTaskCleaner(context);
@@ -548,7 +553,7 @@ public class MRAppMaster extends CompositeService {
 
   protected EventHandler<JobHistoryEvent> createJobHistoryHandler(
       AppContext context) {
-    this.jobHistoryEventHandler = new JobHistoryEventHandler(context,
+    this.jobHistoryEventHandler = new JobHistoryEventHandler2(context,
       getStartCount());
     return this.jobHistoryEventHandler;
   }
@@ -593,7 +598,7 @@ public class MRAppMaster extends CompositeService {
 
   protected TaskAttemptListener createTaskAttemptListener(AppContext context,
       TaskHeartbeatHandler thh, ContainerHeartbeatHandler chh) {
-    TaskAttemptListener lis = new TaskAttemptListenerImpl(context, thh, chh,
+    TaskAttemptListener lis = new TaskAttemptListenerImpl2(context, thh, chh,
         jobTokenSecretManager);
     return lis;
   }

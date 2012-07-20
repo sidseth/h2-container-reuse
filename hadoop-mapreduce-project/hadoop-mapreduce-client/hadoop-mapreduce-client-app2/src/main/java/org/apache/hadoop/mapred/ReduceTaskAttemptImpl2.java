@@ -23,7 +23,6 @@ import org.apache.hadoop.mapreduce.MRJobConfig;
 import org.apache.hadoop.mapreduce.OutputCommitter;
 import org.apache.hadoop.mapreduce.TypeConverter;
 import org.apache.hadoop.mapreduce.security.token.JobTokenIdentifier;
-import org.apache.hadoop.mapreduce.split.JobSplit.TaskSplitMetaInfo;
 import org.apache.hadoop.mapreduce.v2.api.records.TaskId;
 import org.apache.hadoop.mapreduce.v2.app2.AppContext;
 import org.apache.hadoop.mapreduce.v2.app2.TaskAttemptListener;
@@ -35,32 +34,32 @@ import org.apache.hadoop.yarn.Clock;
 import org.apache.hadoop.yarn.event.EventHandler;
 
 @SuppressWarnings("rawtypes")
-public class MapTaskAttemptImpl extends TaskAttemptImpl {
+public class ReduceTaskAttemptImpl2 extends TaskAttemptImpl {
 
-  private final TaskSplitMetaInfo splitInfo;
+  private final int numMapTasks;
 
-  public MapTaskAttemptImpl(TaskId taskId, int attempt, 
-      EventHandler eventHandler, Path jobFile, 
-      int partition, TaskSplitMetaInfo splitInfo, JobConf conf,
-      TaskAttemptListener taskAttemptListener, 
-      OutputCommitter committer, Token<JobTokenIdentifier> jobToken,
-      Credentials credentials, Clock clock, TaskHeartbeatHandler thh,
-      AppContext appContext) {
-    super(taskId, attempt, eventHandler, 
-        taskAttemptListener, jobFile, partition, conf, splitInfo.getLocations(),
-        committer, jobToken, credentials, clock, thh, appContext);
-    this.splitInfo = splitInfo;
+  public ReduceTaskAttemptImpl2(TaskId id, int attempt,
+      EventHandler eventHandler, Path jobFile, int partition,
+      int numMapTasks, JobConf conf,
+      TaskAttemptListener taskAttemptListener, OutputCommitter committer,
+      Token<JobTokenIdentifier> jobToken,
+      Credentials credentials, Clock clock,
+      TaskHeartbeatHandler thh, AppContext appContext) {
+    super(id, attempt, eventHandler, taskAttemptListener, jobFile, partition,
+        conf, new String[] {}, committer, jobToken, credentials, clock, thh,
+        appContext);
+    this.numMapTasks = numMapTasks;
   }
 
   @Override
   public Task createRemoteTask() {
-    //job file name is set in TaskAttempt, setting it null here
-    MapTask mapTask =
-      new MapTask("", TypeConverter.fromYarn(getID()), partition,
-          splitInfo.getSplitIndex(), 1); // YARN doesn't have the concept of slots per task, set it as 1.
-    mapTask.setUser(conf.get(MRJobConfig.USER_NAME));
-    mapTask.setConf(conf);
-    return mapTask;
+  //job file name is set in TaskAttempt, setting it null here
+    ReduceTask reduceTask =
+      new ReduceTask("", TypeConverter.fromYarn(getID()), partition,
+          numMapTasks, 1); // YARN doesn't have the concept of slots per task, set it as 1.
+  reduceTask.setUser(conf.get(MRJobConfig.USER_NAME));
+  reduceTask.setConf(conf);
+    return reduceTask;
   }
 
 }

@@ -22,7 +22,7 @@ import java.util.Map;
 
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.mapred.JobConf;
-import org.apache.hadoop.mapred.ReduceTaskAttemptImpl;
+import org.apache.hadoop.mapred.ReduceTaskAttemptImpl2;
 import org.apache.hadoop.mapreduce.MRJobConfig;
 import org.apache.hadoop.mapreduce.OutputCommitter;
 import org.apache.hadoop.mapreduce.jobhistory.JobHistoryParser.TaskInfo;
@@ -64,7 +64,7 @@ public class ReduceTaskImpl extends TaskImpl {
 
   @Override
   protected TaskAttemptImpl createAttempt() {
-    return new ReduceTaskAttemptImpl(getID(), nextAttemptNumber, eventHandler,
+    return new ReduceTaskAttemptImpl2(getID(), nextAttemptNumber, eventHandler,
         jobFile, partition, numMapTasks, conf, taskAttemptListener, committer,
         jobToken, credentials, clock, taskHeartbeatHandler, appContext);
   }
