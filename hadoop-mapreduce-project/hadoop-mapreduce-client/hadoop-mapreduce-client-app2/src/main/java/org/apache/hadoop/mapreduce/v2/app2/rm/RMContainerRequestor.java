@@ -25,6 +25,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -49,7 +51,7 @@ import org.apache.hadoop.yarn.api.records.NodeReport;
 import org.apache.hadoop.yarn.api.records.Priority;
 import org.apache.hadoop.yarn.api.records.Resource;
 import org.apache.hadoop.yarn.api.records.ResourceRequest;
-import org.apache.hadoop.yarn.exceptions.YarnRemoteException;
+import org.apache.hadoop.yarn.event.EventHandler;
 import org.apache.hadoop.yarn.util.BuilderUtils;
 import org.apache.hadoop.yarn.util.Records;
 
@@ -57,7 +59,7 @@ import org.apache.hadoop.yarn.util.Records;
 /**
  * Keeps the data structures to send container requests to RM.
  */
-public class RMContainerRequestor extends RMCommunicator {
+public class RMContainerRequestor extends RMCommunicator implements EventHandler<RMCommunicatorEvent> {
   
   private static final Log LOG = LogFactory.getLog(RMContainerRequestor.class);
   static final String ANY = "*";
@@ -69,6 +71,8 @@ public class RMContainerRequestor extends RMCommunicator {
   private long retrystartTime;
   private long retryInterval;
 
+  // TODO XXX: Lots of cleanup.
+  
   // TODO XXX: Maintain some statistics on containers allocated, released etc.
   
   //Key -> Priority
@@ -82,13 +86,14 @@ public class RMContainerRequestor extends RMCommunicator {
       new TreeMap<Priority, Map<String, Map<Resource, ResourceRequest>>>();
 
   private final Set<ResourceRequest> ask = new TreeSet<ResourceRequest>();
-  private final Set<ContainerId> release = new TreeSet<ContainerId>(); 
-
+  private Set<ContainerId> release = new TreeSet<ContainerId>();
+  
+  private Lock releaseLock = new ReentrantLock();
+  
 //  private boolean nodeBlacklistingEnabled;
 //  private int blacklistDisablePercent;
 //  private AtomicBoolean ignoreBlacklisting = new AtomicBoolean(false);
 //  private int blacklistedNodeCount = 0;
-  private int lastClusterNmCount = 0;
   private int clusterNmCount = 0;
 //  private int maxTaskFailuresPerNode;
 //  private final Map<String, Integer> nodeFailures = new HashMap<String, Integer>();
@@ -163,34 +168,49 @@ public class RMContainerRequestor extends RMCommunicator {
         MRJobConfig.DEFAULT_MR_AM_TO_RM_WAIT_INTERVAL_MS);
   }
 
-  protected AMResponse makeRemoteRequest() throws YarnRemoteException {
-    AllocateRequest allocateRequest = BuilderUtils.newAllocateRequest(
-        applicationAttemptId, lastResponseID, super.getApplicationProgress(),
-        new ArrayList<ResourceRequest>(ask), new ArrayList<ContainerId>(
-            release));
-    AllocateResponse allocateResponse = scheduler.allocate(allocateRequest);
-    AMResponse response = allocateResponse.getAMResponse();
-    lastResponseID = response.getResponseId();
-    availableResources = response.getAvailableResources();
-    lastClusterNmCount = clusterNmCount;
-    clusterNmCount = allocateResponse.getNumClusterNodes();
-
-    if (ask.size() > 0 || release.size() > 0) {
-      LOG.info("getResources() for " + applicationId + ":" + " ask="
-          + ask.size() + " release= " + release.size() + " newContainers="
-          + response.getAllocatedContainers().size() + " finishedContainers="
-          + response.getCompletedContainersStatuses().size()
-          + " resourcelimit=" + availableResources + " knownNMs="
-          + clusterNmCount);
+  protected AMResponse makeRemoteRequest() throws Exception {
+    
+    ArrayList<ContainerId> clonedReleaseList;
+    releaseLock.lock();
+    try {
+      clonedReleaseList = new ArrayList<ContainerId>(release);
+      release.clear();
+    } finally {
+      releaseLock.unlock();
     }
+    
+      AllocateRequest allocateRequest = BuilderUtils.newAllocateRequest(
+          applicationAttemptId, lastResponseID, super.getApplicationProgress(),
+          new ArrayList<ResourceRequest>(ask), clonedReleaseList);
+      AllocateResponse allocateResponse = null;
+      try {
+        allocateResponse = scheduler.allocate(allocateRequest);
+      } catch (Exception e) {
+        releaseLock.lock();
+        try {
+          release.addAll(clonedReleaseList);
+        } finally {
+          releaseLock.unlock();
+        }
+        throw e;
+      }
+      AMResponse response = allocateResponse.getAMResponse();
+      lastResponseID = response.getResponseId();
+      availableResources = response.getAvailableResources();
+      clusterNmCount = allocateResponse.getNumClusterNodes();
 
-    
-    
-    ask.clear();
-    release.clear();
-    return response;
+      if (ask.size() > 0 || clonedReleaseList.size() > 0) {
+        LOG.info("getResources() for " + applicationId + ":" + " ask="
+            + ask.size() + " release= " + clonedReleaseList.size() + " newContainers="
+            + response.getAllocatedContainers().size() + " finishedContainers="
+            + response.getCompletedContainersStatuses().size()
+            + " resourcelimit=" + availableResources + " knownNMs="
+            + clusterNmCount);
+      }
+
+      ask.clear();
+      return response;
   }
-  
   
 
   protected Resource getAvailableResources() {
@@ -313,9 +333,9 @@ public class RMContainerRequestor extends RMCommunicator {
     }
   }
 
-  protected void release(ContainerId containerId) {
-    release.add(containerId);
-  }
+//  protected void release(ContainerId containerId) {
+//    release.add(containerId);
+//  }
   
   
   @SuppressWarnings("unchecked")
@@ -421,5 +441,30 @@ public class RMContainerRequestor extends RMCommunicator {
           + this.getContext().getApplicationID());
     }
     return response;
+  }
+
+  @Override
+  public void handle(RMCommunicatorEvent rawEvent) {
+    switch(rawEvent.getType()) {
+    case CONTAINER_DEALLOCATE:
+      RMCommunicatorContainerDeAllocateRequestEvent event = (RMCommunicatorContainerDeAllocateRequestEvent)rawEvent;
+      releaseLock.lock();
+      try {
+        release.add(event.getContainerId());
+      } finally {
+        releaseLock.unlock();
+      }
+      break;
+    case CONTAINER_FAILED:
+      LOG.warn("Unexpected CONTAINER_FAILED");
+      break;
+    case CONTAINER_REQ:
+      LOG.warn("Unexpected CONTAINER_REQ");
+      break;
+    default:
+      break;
+    
+    }
+    
   }
 }

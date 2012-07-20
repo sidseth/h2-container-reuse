@@ -6,6 +6,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.mapreduce.v2.app2.AppContext;
 import org.apache.hadoop.yarn.Clock;
 import org.apache.hadoop.yarn.event.EventHandler;
 import org.apache.hadoop.yarn.service.AbstractService;
@@ -18,17 +19,20 @@ public abstract class HeartbeatHandlerBase<T> extends AbstractService {
   protected Thread timeOutCheckerThread;
   private final String name;
   
+  @SuppressWarnings("rawtypes")
   protected final EventHandler eventHandler;
   protected final Clock clock;
+  protected final AppContext appContext;
   
   private ConcurrentMap<T, ReportTime> runningMap;
   private volatile boolean stopped;
   
-  public HeartbeatHandlerBase(EventHandler eventHandler, Clock clock, int numThreads, String name) {
+  public HeartbeatHandlerBase(AppContext appContext,int numThreads, String name) {
     super(name);
     this.name = name;
-    this.eventHandler = eventHandler;
-    this.clock = clock;
+    this.eventHandler = appContext.getEventHandler();
+    this.clock = appContext.getClock();
+    this.appContext = appContext;
     this.runningMap = new ConcurrentHashMap<T, HeartbeatHandlerBase.ReportTime>();
   }
   

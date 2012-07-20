@@ -27,6 +27,7 @@ import org.apache.hadoop.mapreduce.split.JobSplit.TaskSplitMetaInfo;
 import org.apache.hadoop.mapreduce.v2.api.records.TaskId;
 import org.apache.hadoop.mapreduce.v2.app2.AppContext;
 import org.apache.hadoop.mapreduce.v2.app2.TaskAttemptListener;
+import org.apache.hadoop.mapreduce.v2.app2.TaskHeartbeatHandler;
 import org.apache.hadoop.mapreduce.v2.app2.job.impl.TaskAttemptImpl;
 import org.apache.hadoop.security.Credentials;
 import org.apache.hadoop.security.token.Token;
@@ -43,11 +44,11 @@ public class MapTaskAttemptImpl extends TaskAttemptImpl {
       int partition, TaskSplitMetaInfo splitInfo, JobConf conf,
       TaskAttemptListener taskAttemptListener, 
       OutputCommitter committer, Token<JobTokenIdentifier> jobToken,
-      Credentials credentials, Clock clock,
+      Credentials credentials, Clock clock, TaskHeartbeatHandler thh,
       AppContext appContext) {
     super(taskId, attempt, eventHandler, 
         taskAttemptListener, jobFile, partition, conf, splitInfo.getLocations(),
-        committer, jobToken, credentials, clock, appContext);
+        committer, jobToken, credentials, clock, thh, appContext);
     this.splitInfo = splitInfo;
   }
 

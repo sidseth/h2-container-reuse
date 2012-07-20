@@ -2,6 +2,7 @@ package org.apache.hadoop.mapreduce.jobhistory;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.mapreduce.MRJobConfig;
+import org.apache.hadoop.mapreduce.v2.app2.AppContext;
 import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainerEvent;
 import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainerEventType;
 import org.apache.hadoop.yarn.Clock;
@@ -11,10 +12,10 @@ import org.apache.hadoop.yarn.event.EventHandler;
 public class ContainerHeartbeatHandler extends
     HeartbeatHandlerBase<ContainerId> {
 
-  @SuppressWarnings("rawtypes")
-  public ContainerHeartbeatHandler(EventHandler eventHandler, Clock clock,
+ 
+  public ContainerHeartbeatHandler(AppContext context, 
       int numThreads) {
-    super(eventHandler, clock, numThreads, "ContainerHeartbeatHandler");
+    super(context, numThreads, "ContainerHeartbeatHandler");
   }
 
   @Override

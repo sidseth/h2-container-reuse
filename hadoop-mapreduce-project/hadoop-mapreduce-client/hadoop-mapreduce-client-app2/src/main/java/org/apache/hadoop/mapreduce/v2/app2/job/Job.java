@@ -68,6 +68,8 @@ public interface Job {
   String getUserName();
   String getQueueName();
   
+  Configuration getConf();
+  
   /**
    * @return a path to where the config file for this job is located.
    */

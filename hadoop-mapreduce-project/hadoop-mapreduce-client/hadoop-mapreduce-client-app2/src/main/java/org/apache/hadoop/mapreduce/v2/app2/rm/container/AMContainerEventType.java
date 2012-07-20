@@ -10,7 +10,7 @@ public enum AMContainerEventType {
   
   //Producer: NMCommunicator
   C_LAUNCHED,
-  C_LAUNCH_FAILED,
+  C_LAUNCH_FAILED, // TODO XXX: Send a diagnostic update message to the TaskAttempts assigned to this container ?
   
   //Producer: TAL: PULL_TA is a sync call.
   C_PULL_TA,

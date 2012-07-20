@@ -13,4 +13,5 @@ public interface AMNode extends EventHandler<AMNodeEvent> {
   public List<ContainerId> getContainers();
 
   public boolean isUsable();
+  public boolean isBlacklisted();
 }

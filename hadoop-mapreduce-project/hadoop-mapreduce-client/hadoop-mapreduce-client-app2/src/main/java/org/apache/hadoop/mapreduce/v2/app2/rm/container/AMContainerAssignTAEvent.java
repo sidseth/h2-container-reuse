@@ -10,8 +10,7 @@ public class AMContainerAssignTAEvent extends AMContainerEvent {
   private final org.apache.hadoop.mapred.Task remoteTask;
   
   public AMContainerAssignTAEvent(ContainerId containerId,
-      TaskAttemptId attemptId, org.apache.hadoop.mapred.Task remoteTask,
-      AMContainerEventType type) {
+      TaskAttemptId attemptId, org.apache.hadoop.mapred.Task remoteTask) {
     super(containerId, AMContainerEventType.C_ASSIGN_TA);
     this.attemptId = attemptId;
     this.remoteTask = remoteTask;

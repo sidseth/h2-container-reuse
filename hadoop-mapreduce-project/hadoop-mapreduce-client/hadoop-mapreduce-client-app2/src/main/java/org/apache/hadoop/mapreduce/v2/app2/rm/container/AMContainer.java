@@ -17,6 +17,8 @@ public interface AMContainer extends EventHandler<AMContainerEvent>{
   public TaskAttemptId getRunningTaskAttempt();
   public List<TaskAttemptId> getQueuedTaskAttempts();
   
+  public int getShufflePort();
+  
   // TODO Add a method to get the containers capabilities - to match taskAttempts.
 
 }

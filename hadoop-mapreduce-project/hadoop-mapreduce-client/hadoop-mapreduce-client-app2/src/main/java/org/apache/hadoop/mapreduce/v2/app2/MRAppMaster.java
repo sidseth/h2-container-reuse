@@ -36,15 +36,14 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.mapred.FileOutputCommitter;
 import org.apache.hadoop.mapred.JobConf;
-import org.apache.hadoop.mapred.LocalContainerLauncher;
 import org.apache.hadoop.mapred.TaskAttemptListenerImpl;
-import org.apache.hadoop.mapred.TaskUmbilicalProtocol;
 import org.apache.hadoop.mapreduce.MRJobConfig;
 import org.apache.hadoop.mapreduce.OutputCommitter;
 import org.apache.hadoop.mapreduce.OutputFormat;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
 import org.apache.hadoop.mapreduce.TypeConverter;
 import org.apache.hadoop.mapreduce.jobhistory.AMStartedEvent;
+import org.apache.hadoop.mapreduce.jobhistory.ContainerHeartbeatHandler;
 import org.apache.hadoop.mapreduce.jobhistory.JobHistoryEvent;
 import org.apache.hadoop.mapreduce.jobhistory.JobHistoryEventHandler;
 import org.apache.hadoop.mapreduce.jobhistory.JobHistoryParser.TaskInfo;
@@ -68,16 +67,16 @@ import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskEventType;
 import org.apache.hadoop.mapreduce.v2.app2.job.impl.JobImpl;
 import org.apache.hadoop.mapreduce.v2.app2.launcher.ContainerLauncher;
-import org.apache.hadoop.mapreduce.v2.app2.launcher.ContainerLauncherEvent;
 import org.apache.hadoop.mapreduce.v2.app2.launcher.ContainerLauncherImpl;
-import org.apache.hadoop.mapreduce.v2.app2.local.LocalContainerAllocator;
 import org.apache.hadoop.mapreduce.v2.app2.metrics.MRAppMetrics;
 import org.apache.hadoop.mapreduce.v2.app2.recover.Recovery;
 import org.apache.hadoop.mapreduce.v2.app2.recover.RecoveryService;
-import org.apache.hadoop.mapreduce.v2.app2.rm.ContainerAllocator;
-import org.apache.hadoop.mapreduce.v2.app2.rm.ContainerAllocatorEvent;
-import org.apache.hadoop.mapreduce.v2.app2.rm.RMCommunicator;
+import org.apache.hadoop.mapreduce.v2.app2.rm.AMSchedulerEventType;
+import org.apache.hadoop.mapreduce.v2.app2.rm.NMCommunicatorEvent;
+import org.apache.hadoop.mapreduce.v2.app2.rm.NMCommunicatorEventType;
+import org.apache.hadoop.mapreduce.v2.app2.rm.RMCommunicatorEventType;
 import org.apache.hadoop.mapreduce.v2.app2.rm.RMContainerAllocator;
+import org.apache.hadoop.mapreduce.v2.app2.rm.RMContainerRequestor;
 import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainer;
 import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainerMap;
 import org.apache.hadoop.mapreduce.v2.app2.rm.node.AMNode;
@@ -150,7 +149,6 @@ public class MRAppMaster extends CompositeService {
   private final String nmHost;
   private final int nmPort;
   private final int nmHttpPort;
-  // TODO XXX: initialize containers and nodes.
   private AMContainerMap containers;
   private AMNodeMap nodes;
   protected final MRAppMetrics metrics;
@@ -160,10 +158,11 @@ public class MRAppMaster extends CompositeService {
   private Dispatcher dispatcher;
   private ClientService clientService;
   private Recovery recoveryServ;
-  private ContainerAllocator containerAllocator;
   private ContainerLauncher containerLauncher;
   private TaskCleaner taskCleaner;
   private Speculator speculator;
+  private ContainerHeartbeatHandler containerHeartbeatHandler;
+  private TaskHeartbeatHandler taskHeartbeatHandler;
   private TaskAttemptListener taskAttemptListener;
   private JobTokenSecretManager jobTokenSecretManager =
       new JobTokenSecretManager();
@@ -174,6 +173,8 @@ public class MRAppMaster extends CompositeService {
   private JobHistoryEventHandler jobHistoryEventHandler;
   private boolean inRecovery = false;
   private SpeculatorEventDispatcher speculatorEventDispatcher;
+  private RMContainerRequestor rmContainerRequestor;
+  private RMContainerAllocator amScheduler;
   
 
   private Job job;
@@ -252,10 +253,23 @@ public class MRAppMaster extends CompositeService {
       addIfService(dispatcher);
     }
 
+    
+    
+    taskHeartbeatHandler = createTaskHeartbeatHandler(context, conf);
+    addIfService(taskHeartbeatHandler);
+    
+    containerHeartbeatHandler = createContainerHeartbeatHandler(context, conf);
+    addIfService(containerHeartbeatHandler);
+    
     //service to handle requests to TaskUmbilicalProtocol
-    taskAttemptListener = createTaskAttemptListener(context);
+    taskAttemptListener = createTaskAttemptListener(context, taskHeartbeatHandler, containerHeartbeatHandler);
     addIfService(taskAttemptListener);
 
+    containers = new AMContainerMap(containerHeartbeatHandler, taskAttemptListener, dispatcher.getEventHandler(), context);
+    addIfService(containers);
+    
+    nodes = new AMNodeMap(dispatcher.getEventHandler(), context);
+    
     //service to do the task cleanup
     taskCleaner = createTaskCleaner(context);
     addIfService(taskCleaner);
@@ -291,14 +305,27 @@ public class MRAppMaster extends CompositeService {
         speculatorEventDispatcher);
 
     // service to allocate containers from RM (if non-uber) or to fake it (uber)
-    containerAllocator = createContainerAllocator(clientService, context);
-    addIfService(containerAllocator);
-    dispatcher.register(ContainerAllocator.EventType.class, containerAllocator);
+    rmContainerRequestor = new RMContainerRequestor(clientService, context, clock);
+    addIfService(rmContainerRequestor);
+    dispatcher.register(RMCommunicatorEventType.class, rmContainerRequestor);
+    
+    // TODO XXX: Get rid of eventHandlers being sent as part of the constructors. context should be adequate.
+    amScheduler = new RMContainerAllocator(rmContainerRequestor, context, clock, dispatcher.getEventHandler());
+    addIfService(amScheduler);
+    dispatcher.register(AMSchedulerEventType.class, amScheduler);
+    
+//    containerAllocator = createContainerAllocator(clientService, context);
+//    addIfService(containerAllocator);
+//    dispatcher.register(ContainerAllocator.EventType.class, containerAllocator);
 
+    // TODO XXX: initialization of RMComm, Scheduler, etc.
+    
+        
+    // TODO XXX: Rename to NMComm
     // corresponding service to launch allocated containers via NodeManager
-    containerLauncher = createContainerLauncher(context);
+    containerLauncher = createNMCommunicator(context);
     addIfService(containerLauncher);
-    dispatcher.register(ContainerLauncher.EventType.class, containerLauncher);
+    dispatcher.register(NMCommunicatorEventType.class, containerLauncher);
 
     // Add the staging directory cleaner before the history server but after
     // the container allocator so the staging directory is cleaned after
@@ -468,7 +495,8 @@ public class MRAppMaster extends CompositeService {
         new JobImpl(jobId, appAttemptID, conf, dispatcher.getEventHandler(),
             taskAttemptListener, jobTokenSecretManager, fsTokens, clock,
             completedTasksFromPreviousRun, metrics, committer, newApiCommitter,
-            currentUser.getUserName(), appSubmitTime, amInfos, context);
+            currentUser.getUserName(), appSubmitTime, amInfos,
+            taskHeartbeatHandler, context);
     ((RunningAppContext) context).jobs.put(newJob.getID(), newJob);
 
     dispatcher.register(JobFinishEvent.Type.class,
@@ -563,24 +591,45 @@ public class MRAppMaster extends CompositeService {
     }
   }
 
-  protected TaskAttemptListener createTaskAttemptListener(AppContext context) {
-    TaskAttemptListener lis =
-        new TaskAttemptListenerImpl(context, jobTokenSecretManager);
+  protected TaskAttemptListener createTaskAttemptListener(AppContext context,
+      TaskHeartbeatHandler thh, ContainerHeartbeatHandler chh) {
+    TaskAttemptListener lis = new TaskAttemptListenerImpl(context, thh, chh,
+        jobTokenSecretManager);
     return lis;
   }
+  
+  protected TaskHeartbeatHandler createTaskHeartbeatHandler(AppContext context,
+      Configuration conf) {
+    TaskHeartbeatHandler thh = new TaskHeartbeatHandler(context, conf.getInt(
+        MRJobConfig.MR_AM_TASK_LISTENER_THREAD_COUNT,
+        MRJobConfig.DEFAULT_MR_AM_TASK_LISTENER_THREAD_COUNT));
+    return thh;
+  }
 
+  protected ContainerHeartbeatHandler createContainerHeartbeatHandler(AppContext context,
+      Configuration conf) {
+    ContainerHeartbeatHandler chh = new ContainerHeartbeatHandler(context, conf.getInt(
+        MRJobConfig.MR_AM_TASK_LISTENER_THREAD_COUNT,
+        MRJobConfig.DEFAULT_MR_AM_TASK_LISTENER_THREAD_COUNT));
+    return chh;
+  }
+  
   protected TaskCleaner createTaskCleaner(AppContext context) {
     return new TaskCleanerImpl(context);
   }
 
-  protected ContainerAllocator createContainerAllocator(
-      final ClientService clientService, final AppContext context) {
-    return new ContainerAllocatorRouter(clientService, context);
-  }
+//  protected ContainerAllocator createContainerAllocator(
+//      final ClientService clientService, final AppContext context) {
+//    return new ContainerAllocatorRouter(clientService, context);
+//  }
 
   protected ContainerLauncher
       createContainerLauncher(final AppContext context) {
     return new ContainerLauncherRouter(context);
+  }
+  
+  protected ContainerLauncher createNMCommunicator(final AppContext context) {
+    return new ContainerLauncherImpl(context);
   }
 
   //TODO:should have an interface for MRClientService
@@ -628,9 +677,9 @@ public class MRAppMaster extends CompositeService {
     return amInfos;
   }
   
-  public ContainerAllocator getContainerAllocator() {
-    return containerAllocator;
-  }
+//  public ContainerAllocator getContainerAllocator() {
+//    return containerAllocator;
+//  }
   
   public ContainerLauncher getContainerLauncher() {
     return containerLauncher;
@@ -644,49 +693,51 @@ public class MRAppMaster extends CompositeService {
    * By the time life-cycle of this router starts, job-init would have already
    * happened.
    */
-  private final class ContainerAllocatorRouter extends AbstractService
-      implements ContainerAllocator {
-    private final ClientService clientService;
-    private final AppContext context;
-    private ContainerAllocator containerAllocator;
-
-    ContainerAllocatorRouter(ClientService clientService,
-        AppContext context) {
-      super(ContainerAllocatorRouter.class.getName());
-      this.clientService = clientService;
-      this.context = context;
-    }
-
-    @Override
-    public synchronized void start() {
-      if (job.isUber()) {
-        this.containerAllocator = new LocalContainerAllocator(
-            this.clientService, this.context, nmHost, nmPort, nmHttpPort
-            , containerID);
-      } else {
-        this.containerAllocator = new RMContainerAllocator(
-            this.clientService, this.context);
-      }
-      ((Service)this.containerAllocator).init(getConfig());
-      ((Service)this.containerAllocator).start();
-      super.start();
-    }
-
-    @Override
-    public synchronized void stop() {
-      ((Service)this.containerAllocator).stop();
-      super.stop();
-    }
-
-    @Override
-    public void handle(ContainerAllocatorEvent event) {
-      this.containerAllocator.handle(event);
-    }
-
-    public void setSignalled(boolean isSignalled) {
-      ((RMCommunicator) containerAllocator).setSignalled(true);
-    }
-  }
+//  private final class ContainerAllocatorRouter extends AbstractService
+//      implements ContainerAllocator {
+//    private final ClientService clientService;
+//    private final AppContext context;
+//    private ContainerAllocator containerAllocator;
+//
+//    ContainerAllocatorRouter(ClientService clientService,
+//        AppContext context) {
+//      super(ContainerAllocatorRouter.class.getName());
+//      this.clientService = clientService;
+//      this.context = context;
+//    }
+//
+//    @Override
+//    public synchronized void start() {
+//      if (job.isUber()) {
+//        this.containerAllocator = new LocalContainerAllocator(
+//            this.clientService, this.context, nmHost, nmPort, nmHttpPort
+//            , containerID);
+//      } else {
+//        
+//        // TODO XXX UberAM
+////        this.containerAllocator = new RMContainerAllocator(
+////            this.clientService, this.context);
+//      }
+//      ((Service)this.containerAllocator).init(getConfig());
+//      ((Service)this.containerAllocator).start();
+//      super.start();
+//    }
+//
+//    @Override
+//    public synchronized void stop() {
+//      ((Service)this.containerAllocator).stop();
+//      super.stop();
+//    }
+//
+//    @Override
+//    public void handle(ContainerAllocatorEvent event) {
+//      this.containerAllocator.handle(event);
+//    }
+//
+//    public void setSignalled(boolean isSignalled) {
+//      ((RMCommunicator) containerAllocator).setSignalled(true);
+//    }
+//  }
 
   /**
    * By the time life-cycle of this router starts, job-init would have already
@@ -705,8 +756,9 @@ public class MRAppMaster extends CompositeService {
     @Override
     public synchronized void start() {
       if (job.isUber()) {
-        this.containerLauncher = new LocalContainerLauncher(context,
-            (TaskUmbilicalProtocol) taskAttemptListener);
+        // TODO XXX: Handle uber.
+//        this.containerLauncher = new LocalContainerLauncher(context,
+//            (TaskUmbilicalProtocol) taskAttemptListener);
       } else {
         this.containerLauncher = new ContainerLauncherImpl(context);
       }
@@ -716,7 +768,7 @@ public class MRAppMaster extends CompositeService {
     }
 
     @Override
-    public void handle(ContainerLauncherEvent event) {
+    public void handle(NMCommunicatorEvent event) {
         this.containerLauncher.handle(event);
     }
 
@@ -1055,10 +1107,11 @@ public class MRAppMaster extends CompositeService {
         + "JobHistoryEventHandler.");
       // Notify the JHEH and RMCommunicator that a SIGTERM has been received so
       // that they don't take too long in shutting down
-      if(appMaster.containerAllocator instanceof ContainerAllocatorRouter) {
-        ((ContainerAllocatorRouter) appMaster.containerAllocator)
-        .setSignalled(true);
-      }
+      // TODO XXX: wtf is this ?? 
+//      if(appMaster.containerAllocator instanceof ContainerAllocatorRouter) {
+//        ((ContainerAllocatorRouter) appMaster.containerAllocator)
+//        .setSignalled(true);
+//      }
       if(appMaster.jobHistoryEventHandler != null) {
         appMaster.jobHistoryEventHandler.setSignalled(true);
       }

@@ -26,6 +26,7 @@ import org.apache.hadoop.mapreduce.security.token.JobTokenIdentifier;
 import org.apache.hadoop.mapreduce.v2.api.records.TaskId;
 import org.apache.hadoop.mapreduce.v2.app2.AppContext;
 import org.apache.hadoop.mapreduce.v2.app2.TaskAttemptListener;
+import org.apache.hadoop.mapreduce.v2.app2.TaskHeartbeatHandler;
 import org.apache.hadoop.mapreduce.v2.app2.job.impl.TaskAttemptImpl;
 import org.apache.hadoop.security.Credentials;
 import org.apache.hadoop.security.token.Token;
@@ -43,9 +44,9 @@ public class ReduceTaskAttemptImpl extends TaskAttemptImpl {
       TaskAttemptListener taskAttemptListener, OutputCommitter committer,
       Token<JobTokenIdentifier> jobToken,
       Credentials credentials, Clock clock,
-      AppContext appContext) {
+      TaskHeartbeatHandler thh, AppContext appContext) {
     super(id, attempt, eventHandler, taskAttemptListener, jobFile, partition,
-        conf, new String[] {}, committer, jobToken, credentials, clock,
+        conf, new String[] {}, committer, jobToken, credentials, clock, thh,
         appContext);
     this.numMapTasks = numMapTasks;
   }

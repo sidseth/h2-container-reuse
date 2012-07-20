@@ -76,6 +76,7 @@ import org.apache.hadoop.mapreduce.v2.api.records.TaskState;
 import org.apache.hadoop.mapreduce.v2.api.records.TaskType;
 import org.apache.hadoop.mapreduce.v2.app2.AppContext;
 import org.apache.hadoop.mapreduce.v2.app2.TaskAttemptListener;
+import org.apache.hadoop.mapreduce.v2.app2.TaskHeartbeatHandler;
 import org.apache.hadoop.mapreduce.v2.app2.job.Task;
 import org.apache.hadoop.mapreduce.v2.app2.job.TaskAttempt;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.JobCounterUpdateEvent;
@@ -151,6 +152,7 @@ public class JobImpl implements org.apache.hadoop.mapreduce.v2.app2.job.Job,
   private final boolean newApiCommitter;
   private final org.apache.hadoop.mapreduce.JobID oldJobId;
   private final TaskAttemptListener taskAttemptListener;
+  private final TaskHeartbeatHandler taskHeartbeatHandler;
   private final Object tasksSyncHandle = new Object();
   private final Set<TaskId> mapTasks = new LinkedHashSet<TaskId>();
   private final Set<TaskId> reduceTasks = new LinkedHashSet<TaskId>();
@@ -412,7 +414,8 @@ public class JobImpl implements org.apache.hadoop.mapreduce.v2.app2.job.Job,
       Credentials fsTokenCredentials, Clock clock,
       Map<TaskId, TaskInfo> completedTasksFromPreviousRun, MRAppMetrics metrics,
       OutputCommitter committer, boolean newApiCommitter, String userName,
-      long appSubmitTime, List<AMInfo> amInfos, AppContext appContext) {
+      long appSubmitTime, List<AMInfo> amInfos, TaskHeartbeatHandler thh,
+      AppContext appContext) {
     this.applicationAttemptId = applicationAttemptId;
     this.jobId = jobId;
     this.jobName = conf.get(JobContext.JOB_NAME, "<missing job name>");
@@ -429,6 +432,7 @@ public class JobImpl implements org.apache.hadoop.mapreduce.v2.app2.job.Job,
     this.newApiCommitter = newApiCommitter;
 
     this.taskAttemptListener = taskAttemptListener;
+    this.taskHeartbeatHandler = thh;
     this.eventHandler = eventHandler;
     ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
     this.readLock = readWriteLock.readLock();
@@ -453,6 +457,11 @@ public class JobImpl implements org.apache.hadoop.mapreduce.v2.app2.job.Job,
   @Override
   public JobId getID() {
     return jobId;
+  }
+  
+  @Override
+  public Configuration getConf() {
+    return conf;
   }
 
   // Getter methods that make unit testing easier (package-scoped)
@@ -1122,7 +1131,7 @@ public class JobImpl implements org.apache.hadoop.mapreduce.v2.app2.job.Job,
                 job.committer, job.jobToken, job.fsTokens,
                 job.clock, job.completedTasksFromPreviousRun, 
                 job.applicationAttemptId.getAttemptId(),
-                job.metrics, job.appContext);
+                job.metrics, job.taskHeartbeatHandler, job.appContext);
         job.addTask(task);
       }
       LOG.info("Input size for job " + job.jobId + " = " + inputLength
@@ -1140,7 +1149,7 @@ public class JobImpl implements org.apache.hadoop.mapreduce.v2.app2.job.Job,
                 job.fsTokens, job.clock,
                 job.completedTasksFromPreviousRun, 
                 job.applicationAttemptId.getAttemptId(),
-                job.metrics, job.appContext);
+                job.metrics, job.taskHeartbeatHandler, job.appContext);
         job.addTask(task);
       }
       LOG.info("Number of reduces for job " + job.jobId + " = "

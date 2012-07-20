@@ -45,6 +45,8 @@ import org.apache.hadoop.yarn.service.AbstractService;
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class TaskHeartbeatHandler extends AbstractService {
   
+  // TODO XXX: Extend HeartbeatHandlerBase
+  
   private static class ReportTime {
     private long lastPing;
     private long lastProgress;
@@ -83,14 +85,16 @@ public class TaskHeartbeatHandler extends AbstractService {
 
   private final EventHandler eventHandler;
   private final Clock clock;
+  private final AppContext context;
   
   private ConcurrentMap<TaskAttemptId, ReportTime> runningAttempts;
 
-  public TaskHeartbeatHandler(EventHandler eventHandler, Clock clock,
+  public TaskHeartbeatHandler(AppContext context,
       int numThreads) {
     super("TaskHeartbeatHandler");
-    this.eventHandler = eventHandler;
-    this.clock = clock;
+    this.eventHandler = context.getEventHandler();
+    this.clock = context.getClock();
+    this.context = context;
     runningAttempts =
       new ConcurrentHashMap<TaskAttemptId, ReportTime>(16, 0.75f, numThreads);
   }

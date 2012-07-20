@@ -117,6 +117,10 @@ public abstract class RMCommunicator extends AbstractService  {
   protected Job getJob() {
     return job;
   }
+  
+  public Map<ApplicationAccessType, String> getApplicationAcls() {
+    return this.applicationACLs;
+  }
 
   /**
    * Get the appProgress. Can be used only after this component is started.

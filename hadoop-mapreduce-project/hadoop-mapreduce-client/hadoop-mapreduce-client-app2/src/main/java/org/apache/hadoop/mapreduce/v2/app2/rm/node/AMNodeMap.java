@@ -31,6 +31,7 @@ public class AMNodeMap extends ConcurrentHashMap<NodeId, AMNode> implements
   
   public boolean isHostBlackListed(String hostname) {
     return false;
+    // Node versus host blacklisting.
  // TODO XXX -> Maintain a map of host to NodeList (case of multiple NMs)
     // Provide functionality to say isHostBlacklisted(hostname) -> all hosts.
     // ... blacklisted means don't ask for containers on this host.

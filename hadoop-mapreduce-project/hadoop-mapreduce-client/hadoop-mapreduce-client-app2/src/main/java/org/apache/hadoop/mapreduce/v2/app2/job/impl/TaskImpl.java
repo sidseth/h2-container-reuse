@@ -55,6 +55,7 @@ import org.apache.hadoop.mapreduce.v2.api.records.TaskState;
 import org.apache.hadoop.mapreduce.v2.api.records.TaskType;
 import org.apache.hadoop.mapreduce.v2.app2.AppContext;
 import org.apache.hadoop.mapreduce.v2.app2.TaskAttemptListener;
+import org.apache.hadoop.mapreduce.v2.app2.TaskHeartbeatHandler;
 import org.apache.hadoop.mapreduce.v2.app2.job.Task;
 import org.apache.hadoop.mapreduce.v2.app2.job.TaskAttempt;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.JobDiagnosticsUpdateEvent;
@@ -96,6 +97,7 @@ public abstract class TaskImpl implements Task, EventHandler<TaskEvent> {
   protected final OutputCommitter committer;
   protected final int partition;
   protected final TaskAttemptListener taskAttemptListener;
+  protected final TaskHeartbeatHandler taskHeartbeatHandler;
   protected final EventHandler eventHandler;
   private final TaskId taskId;
   private Map<TaskAttemptId, TaskAttempt> attempts;
@@ -253,7 +255,7 @@ public abstract class TaskImpl implements Task, EventHandler<TaskEvent> {
       Token<JobTokenIdentifier> jobToken,
       Credentials credentials, Clock clock,
       Map<TaskId, TaskInfo> completedTasksFromPreviousRun, int startCount,
-      MRAppMetrics metrics, AppContext appContext) {
+      MRAppMetrics metrics, TaskHeartbeatHandler thh, AppContext appContext) {
     this.conf = conf;
     this.clock = clock;
     this.jobFile = remoteJobConfFile;
@@ -268,6 +270,7 @@ public abstract class TaskImpl implements Task, EventHandler<TaskEvent> {
     taskId = MRBuilderUtils.newTaskId(jobId, partition, taskType);
     this.partition = partition;
     this.taskAttemptListener = taskAttemptListener;
+    this.taskHeartbeatHandler = thh;
     this.eventHandler = eventHandler;
     this.committer = committer;
     this.credentials = credentials;

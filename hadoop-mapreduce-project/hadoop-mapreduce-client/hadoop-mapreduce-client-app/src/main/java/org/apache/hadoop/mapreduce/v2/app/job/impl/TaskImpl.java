@@ -633,6 +633,7 @@ public abstract class TaskImpl implements Task, EventHandler<TaskEvent> {
     TaskAttempt attempt = attempts.get(attemptId);
     //raise the completion event only if the container is assigned
     // to nextAttemptNumber
+    // TODO XXX: Are reduce tasks being sent out as well ?
     if (attempt.getNodeHttpAddress() != null) {
       TaskAttemptCompletionEvent tce = recordFactory
           .newRecordInstance(TaskAttemptCompletionEvent.class);

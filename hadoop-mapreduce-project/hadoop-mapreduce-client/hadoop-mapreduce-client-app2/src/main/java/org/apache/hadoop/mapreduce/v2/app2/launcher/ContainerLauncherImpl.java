@@ -22,8 +22,6 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.security.PrivilegedAction;
-import java.util.HashSet;
-import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -37,12 +35,12 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.CommonConfigurationKeysPublic;
 import org.apache.hadoop.mapred.ShuffleHandler;
 import org.apache.hadoop.mapreduce.MRJobConfig;
-import org.apache.hadoop.mapreduce.v2.api.records.TaskAttemptId;
 import org.apache.hadoop.mapreduce.v2.app2.AppContext;
-import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptContainerLaunchedEvent;
-import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptDiagnosticsUpdateEvent;
-import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptEvent;
-import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptEventType;
+import org.apache.hadoop.mapreduce.v2.app2.rm.NMCommunicatorEvent;
+import org.apache.hadoop.mapreduce.v2.app2.rm.NMCommunicatorLaunchRequestEvent;
+import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainerEventLaunchFailed;
+import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainerEventLaunched;
+import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainerEventStopFailed;
 import org.apache.hadoop.net.NetUtils;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.security.token.Token;
@@ -63,6 +61,13 @@ import org.apache.hadoop.yarn.util.Records;
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 
+
+// TODO XXX: See what part of this lifecycle and state management can be simplified.
+// Ideally, no state - only sendStart / sendStop.
+
+// TODO XXX: ShufflePort needs to make it over to the TaskAttempt.
+// TODO XXX: Review this entire code and clean it up.
+
 /**
  * This class is responsible for launching of containers.
  */
@@ -79,16 +84,16 @@ public class ContainerLauncherImpl extends AbstractService implements
   protected static final int INITIAL_POOL_SIZE = 10;
   private int limitOnPoolSize;
   private Thread eventHandlingThread;
-  protected BlockingQueue<ContainerLauncherEvent> eventQueue =
-      new LinkedBlockingQueue<ContainerLauncherEvent>();
+  protected BlockingQueue<NMCommunicatorEvent> eventQueue =
+      new LinkedBlockingQueue<NMCommunicatorEvent>();
   YarnRPC rpc;
 
-  private Container getContainer(ContainerLauncherEvent event) {
-    ContainerId id = event.getContainerID();
+  private Container getContainer(NMCommunicatorEvent event) {
+    ContainerId id = event.getContainerId();
     Container c = containers.get(id);
     if(c == null) {
-      c = new Container(event.getTaskAttemptID(), event.getContainerID(),
-          event.getContainerMgrAddress(), event.getContainerToken());
+      c = new Container(event.getContainerId(),
+          event.getNodeId().toString(), event.getContainerToken());
       Container old = containers.putIfAbsent(id, c);
       if(old != null) {
         c = old;
@@ -111,15 +116,13 @@ public class ContainerLauncherImpl extends AbstractService implements
   private class Container {
     private ContainerState state;
     // store enough information to be able to cleanup the container
-    private TaskAttemptId taskAttemptID;
     private ContainerId containerID;
     final private String containerMgrAddress;
     private ContainerToken containerToken;
     
-    public Container(TaskAttemptId taId, ContainerId containerID,
+    public Container(ContainerId containerID,
         String containerMgrAddress, ContainerToken containerToken) {
       this.state = ContainerState.PREP;
-      this.taskAttemptID = taId;
       this.containerMgrAddress = containerMgrAddress;
       this.containerID = containerID;
       this.containerToken = containerToken;
@@ -130,11 +133,11 @@ public class ContainerLauncherImpl extends AbstractService implements
     }
     
     @SuppressWarnings("unchecked")
-    public synchronized void launch(ContainerRemoteLaunchEvent event) {
-      LOG.info("Launching " + taskAttemptID);
+    public synchronized void launch(NMCommunicatorLaunchRequestEvent event) {
+      LOG.info("Launching Container with Id: " + event.getContainerId());
       if(this.state == ContainerState.KILLED_BEFORE_LAUNCH) {
         state = ContainerState.DONE;
-        sendContainerLaunchFailedMsg(taskAttemptID, 
+        sendContainerLaunchFailedMsg(event.getContainerId(), 
             "Container was killed before it was launched");
         return;
       }
@@ -147,7 +150,7 @@ public class ContainerLauncherImpl extends AbstractService implements
 
         // Construct the actual Container
         ContainerLaunchContext containerLaunchContext =
-          event.getContainer();
+          event.getContainerLaunchContext();
 
         // Now launch the actual container
         StartContainerRequest startRequest = Records
@@ -162,24 +165,23 @@ public class ContainerLauncherImpl extends AbstractService implements
           port = ShuffleHandler.deserializeMetaData(portInfo);
         }
         LOG.info("Shuffle port returned by ContainerManager for "
-            + taskAttemptID + " : " + port);
+            + containerID + " : " + port);
 
         if(port < 0) {
           this.state = ContainerState.FAILED;
           throw new IllegalStateException("Invalid shuffle port number "
-              + port + " returned for " + taskAttemptID);
+              + port + " returned for " + containerID);
         }
 
         // after launching, send launched event to task attempt to move
         // it from ASSIGNED to RUNNING state
-        context.getEventHandler().handle(
-            new TaskAttemptContainerLaunchedEvent(taskAttemptID, port));
+        context.getEventHandler().handle(new AMContainerEventLaunched(containerID, port));
         this.state = ContainerState.RUNNING;
       } catch (Throwable t) {
         String message = "Container launch failed for " + containerID + " : "
             + StringUtils.stringifyException(t);
         this.state = ContainerState.FAILED;
-        sendContainerLaunchFailedMsg(taskAttemptID, message);
+        sendContainerLaunchFailedMsg(containerID, message);
       } finally {
         if (proxy != null) {
           ContainerLauncherImpl.this.rpc.stopProxy(proxy, getConfig());
@@ -196,7 +198,7 @@ public class ContainerLauncherImpl extends AbstractService implements
       if(this.state == ContainerState.PREP) {
         this.state = ContainerState.KILLED_BEFORE_LAUNCH;
       } else {
-        LOG.info("KILLING " + taskAttemptID);
+        LOG.info("KILLING ContainerId: " + containerID);
 
         ContainerManager proxy = null;
         try {
@@ -215,9 +217,10 @@ public class ContainerLauncherImpl extends AbstractService implements
           String message = "cleanup failed for container "
             + this.containerID + " : "
             + StringUtils.stringifyException(t);
-          context.getEventHandler().handle(
-            new TaskAttemptDiagnosticsUpdateEvent(this.taskAttemptID, message));
+          context.getEventHandler().handle(new AMContainerEventStopFailed(containerID, message));
           LOG.warn(message);
+          this.state = ContainerState.DONE;
+          return;
         } finally {
           if (proxy != null) {
             ContainerLauncherImpl.this.rpc.stopProxy(proxy, getConfig());
@@ -225,15 +228,13 @@ public class ContainerLauncherImpl extends AbstractService implements
         }
         this.state = ContainerState.DONE;
       }
+      // TODO XXX: NO STOPPED event. Waiting for the RM to get back.
       // after killing, send killed event to task attempt
-      context.getEventHandler().handle(
-          new TaskAttemptEvent(this.taskAttemptID,
-              TaskAttemptEventType.TA_CONTAINER_CLEANED));
+//      context.getEventHandler().handle(
+//          new TaskAttemptEvent(this.taskAttemptID,
+//              TaskAttemptEventType.TA_CONTAINER_CLEANED));
     }
   }
-
-  // To track numNodes.
-  Set<String> allNodes = new HashSet<String>();
 
   public ContainerLauncherImpl(AppContext context) {
     super(ContainerLauncherImpl.class.getName());
@@ -271,7 +272,7 @@ public class ContainerLauncherImpl extends AbstractService implements
     eventHandlingThread = new Thread() {
       @Override
       public void run() {
-        ContainerLauncherEvent event = null;
+        NMCommunicatorEvent event = null;
         while (!Thread.currentThread().isInterrupted()) {
           try {
             event = eventQueue.take();
@@ -287,7 +288,7 @@ public class ContainerLauncherImpl extends AbstractService implements
 
             // nodes where containers will run at *this* point of time. This is
             // *not* the cluster size and doesn't need to be.
-            int numNodes = allNodes.size();
+            int numNodes = context.getAllNodes().size();
             int idealPoolSize = Math.min(limitOnPoolSize, numNodes);
 
             if (poolSize < idealPoolSize) {
@@ -332,7 +333,7 @@ public class ContainerLauncherImpl extends AbstractService implements
     super.stop();
   }
 
-  protected EventProcessor createEventProcessor(ContainerLauncherEvent event) {
+  protected EventProcessor createEventProcessor(NMCommunicatorEvent event) {
     return new EventProcessor(event);
   }
 
@@ -368,9 +369,9 @@ public class ContainerLauncherImpl extends AbstractService implements
    * Setup and start the container on remote nodemanager.
    */
   class EventProcessor implements Runnable {
-    private ContainerLauncherEvent event;
+    private NMCommunicatorEvent event;
 
-    EventProcessor(ContainerLauncherEvent event) {
+    EventProcessor(NMCommunicatorEvent event) {
       this.event = event;
     }
 
@@ -380,18 +381,18 @@ public class ContainerLauncherImpl extends AbstractService implements
 
       // Load ContainerManager tokens before creating a connection.
       // TODO: Do it only once per NodeManager.
-      ContainerId containerID = event.getContainerID();
+      ContainerId containerID = event.getContainerId();
 
       Container c = getContainer(event);
       switch(event.getType()) {
 
-      case CONTAINER_REMOTE_LAUNCH:
-        ContainerRemoteLaunchEvent launchEvent
-            = (ContainerRemoteLaunchEvent) event;
+      case CONTAINER_LAUNCH_REQUEST:
+        NMCommunicatorLaunchRequestEvent launchEvent
+            = (NMCommunicatorLaunchRequestEvent) event;
         c.launch(launchEvent);
         break;
 
-      case CONTAINER_REMOTE_CLEANUP:
+      case CONTAINER_STOP_REQUEST:
         c.kill();
         break;
       }
@@ -400,21 +401,16 @@ public class ContainerLauncherImpl extends AbstractService implements
   }
 
   @SuppressWarnings("unchecked")
-  void sendContainerLaunchFailedMsg(TaskAttemptId taskAttemptID,
+  void sendContainerLaunchFailedMsg(ContainerId containerId,
       String message) {
     LOG.error(message);
-    context.getEventHandler().handle(
-        new TaskAttemptDiagnosticsUpdateEvent(taskAttemptID, message));
-    context.getEventHandler().handle(
-        new TaskAttemptEvent(taskAttemptID,
-            TaskAttemptEventType.TA_CONTAINER_LAUNCH_FAILED));
+    context.getEventHandler().handle(new AMContainerEventLaunchFailed(containerId, message));
   }
 
   @Override
-  public void handle(ContainerLauncherEvent event) {
+  public void handle(NMCommunicatorEvent event) {
     try {
       eventQueue.put(event);
-      this.allNodes.add(event.getContainerMgrAddress());
     } catch (InterruptedException e) {
       throw new YarnException(e);
     }

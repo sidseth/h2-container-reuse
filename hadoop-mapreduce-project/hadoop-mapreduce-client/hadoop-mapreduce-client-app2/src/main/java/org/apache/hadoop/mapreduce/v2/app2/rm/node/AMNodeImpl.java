@@ -375,6 +375,21 @@ public class AMNodeImpl implements AMNode {
   @Override
   public boolean isUsable() {
     // TODO Auto-generated method stub
-    return false;
+    this.readLock.lock();
+    try {
+      return (EnumSet.of(AMNodeState.ACTIVE, AMNodeState.FORCED_ACTIVE)
+          .contains(getState()));
+    } finally {
+      this.readLock.unlock();
+    }
+  }
+
+  public boolean isBlacklisted() {
+    this.readLock.lock();
+    try {
+      return getState() == AMNodeState.BLACKLISTED;
+    } finally {
+      this.readLock.unlock();
+    }
   }
 }
