@@ -22,7 +22,7 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.DataOutputBuffer;
-import org.apache.hadoop.mapred.MapReduceChildJVM;
+import org.apache.hadoop.mapred.MapReduceChildJVM2;
 import org.apache.hadoop.mapred.ShuffleHandler;
 import org.apache.hadoop.mapred.Task;
 import org.apache.hadoop.mapred.WrappedJvmID;
@@ -98,6 +98,8 @@ public class AMContainerImpl implements AMContainer {
   // TODO ?? Convert to list and hash.
   
   private int shufflePort; 
+  private long idleTimeBetweenTasks = 0;
+  private long lastTaskFinishTime;
   
   
   private TaskAttemptId pendingAttempt;
@@ -259,6 +261,8 @@ public class AMContainerImpl implements AMContainer {
   @Override
   public void handle(AMContainerEvent event) {
     this.writeLock.lock();
+    LOG.info("XXX: Processing ContainerEvent" + event.getContainerId() + " of type "
+        + event.getType() + " while in state: " + getState());
     try {
       final AMContainerState oldState = getState();
       try {
@@ -486,6 +490,11 @@ public class AMContainerImpl implements AMContainer {
         container.pullAttempt = container.pendingAttempt;
         container.runningAttempt = container.pendingAttempt;
         container.pendingAttempt = null;
+        if (container.lastTaskFinishTime != 0) {
+          long idleTimeDiff = System.currentTimeMillis() - container.lastTaskFinishTime;
+          LOG.info("Computing idle time for container: " + container.getContainerId() + ", lastFinishTime: " + container.lastTaskFinishTime + ", Incremented by: " + idleTimeDiff);
+          container.idleTimeBetweenTasks += System.currentTimeMillis() - container.lastTaskFinishTime;
+        }
         return AMContainerState.RUNNING;
         // TODO XXX: Make sure the TAL sends out a TA_STARTED_REMOTELY, along with the shuffle port.
       } else {
@@ -613,9 +622,12 @@ public class AMContainerImpl implements AMContainer {
       SingleArcTransition<AMContainerImpl, AMContainerEvent> {
     @Override
     public void transition(AMContainerImpl container, AMContainerEvent cEvent) {
+      LOG.info("XXX: IdleTimeBetweenTasks: " + container.idleTimeBetweenTasks);
       container.sendStopRequestToNM();
       container.deAllocate();
       container.containerHeartbeatHandler.unregister(container.containerId);
+      container.unregisterJvmFromListener(container.jvmId);
+      // TODO XXXXXXXXX: Unregister from TAL so that the Container kills itself (via a kill task assignment)
     }
   }
 
@@ -636,6 +648,7 @@ public class AMContainerImpl implements AMContainer {
       SingleArcTransition<AMContainerImpl, AMContainerEvent> {
     @Override
     public void transition(AMContainerImpl container, AMContainerEvent cEvent) {
+      container.lastTaskFinishTime = System.currentTimeMillis();
       container.completedAttempts.add(container.runningAttempt);
       container.unregisterAttemptFromListener(container.runningAttempt);
       container.runningAttempt = null;
@@ -1100,10 +1113,10 @@ public class AMContainerImpl implements AMContainer {
     Map<String, String> env = commonContainerSpec.getEnvironment();
     Map<String, String> myEnv = new HashMap<String, String>(env.size());
     myEnv.putAll(env);
-    MapReduceChildJVM.setVMEnv(myEnv, remoteTask);
+    MapReduceChildJVM2.setVMEnv(myEnv, remoteTask);
 
     // Set up the launch command
-    List<String> commands = MapReduceChildJVM.getVMCommand(
+    List<String> commands = MapReduceChildJVM2.getVMCommand(
         taskAttemptListener.getAddress(), remoteTask, jvmID);
 
     // Duplicate the ByteBuffers for access by multiple containers.

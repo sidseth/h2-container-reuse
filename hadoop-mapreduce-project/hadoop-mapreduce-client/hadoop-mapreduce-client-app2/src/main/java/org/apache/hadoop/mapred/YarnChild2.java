@@ -64,9 +64,9 @@ import org.apache.log4j.LogManager;
 /**
  * The main() for MapReduce task processes.
  */
-class YarnChild {
+class YarnChild2 {
 
-  private static final Log LOG = LogFactory.getLog(YarnChild.class);
+  private static final Log LOG = LogFactory.getLog(YarnChild2.class);
 
   static volatile TaskAttemptID taskid = null;
 
@@ -112,11 +112,15 @@ class YarnChild {
     UserGroupInformation childUGI = null;
 
     try {
+      while (true) {
+        LOG.info("Polling for next task");
       int idleLoopCount = 0;
       JvmTask myTask = null;;
       // poll for new task
       for (int idle = 0; null == myTask; ++idle) {
-        long sleepTimeMilliSecs = Math.min(idle * 500, 1500);
+//        long sleepTimeMilliSecs = Math.min(idle * 500, 1500);
+        // XXX: Figure out sleep time.
+        long sleepTimeMilliSecs = 20;
         LOG.info("Sleeping for " + sleepTimeMilliSecs
             + "ms before retrying again. Got null now.");
         MILLISECONDS.sleep(sleepTimeMilliSecs);
@@ -127,7 +131,7 @@ class YarnChild {
       }
 
       task = myTask.getTask();
-      YarnChild.taskid = task.getTaskID();
+      YarnChild2.taskid = task.getTaskID();
 
       // Create the job-conf and set credentials
       final JobConf job =
@@ -153,6 +157,8 @@ class YarnChild {
           return null;
         }
       });
+      LOG.info("XXX: _______Done executing one task_________");
+      }
     } catch (FSError e) {
       LOG.fatal("FSError from child", e);
       umbilical.fsError(taskid, e.getMessage());

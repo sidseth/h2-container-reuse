@@ -420,7 +420,7 @@ public class TaskAttemptListenerImpl2 extends CompositeService
     // A rough imitation of code from TaskTracker.
 
     JVMId jvmId = jvmContext.jvmId;
-    LOG.info("JVM with ID : " + jvmId + " asked for a task");
+    LOG.info("ZZZ: JVM with ID : " + jvmId + " asked for a task");
     
     JvmTask jvmTask = null;
     // TODO: Is it an authorized container to get a task? Otherwise return null.

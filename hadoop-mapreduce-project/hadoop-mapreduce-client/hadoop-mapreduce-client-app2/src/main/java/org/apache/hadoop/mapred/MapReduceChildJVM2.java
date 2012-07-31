@@ -35,7 +35,7 @@ import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.hadoop.yarn.util.Apps;
 
 @SuppressWarnings("deprecation")
-public class MapReduceChildJVM {
+public class MapReduceChildJVM2 {
 
   private static String getTaskLogFile(LogName filter) {
     return ApplicationConstants.LOG_DIR_EXPANSION_VAR + Path.SEPARATOR + 
@@ -230,7 +230,7 @@ public class MapReduceChildJVM {
     }
 
     // Add main class and its arguments 
-    vargs.add(YarnChild.class.getName());  // main of Child
+    vargs.add(YarnChild2.class.getName());  // main of Child
     // pass TaskAttemptListener's address
     vargs.add(taskAttemptListenerAddr.getAddress().getHostAddress()); 
     vargs.add(Integer.toString(taskAttemptListenerAddr.getPort())); 

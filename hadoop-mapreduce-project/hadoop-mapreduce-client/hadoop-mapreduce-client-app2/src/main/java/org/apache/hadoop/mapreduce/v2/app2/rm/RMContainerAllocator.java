@@ -61,6 +61,7 @@ import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainerEvent;
 import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainerEventType;
 import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainerLaunchRequestEvent;
 import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainerMap;
+import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainerState;
 import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainerTASucceededEvent;
 import org.apache.hadoop.mapreduce.v2.app2.rm.node.AMNodeEventTaskAttemptEnded;
 import org.apache.hadoop.mapreduce.v2.app2.rm.node.AMNodeEventTaskAttemptSucceeded;
@@ -167,6 +168,9 @@ public class RMContainerAllocator extends AbstractService
   private float maxReduceRampupLimit = 0;
   private float maxReducePreemptionLimit = 0;
   private float reduceSlowStart = 0;
+  
+  // TODO XXX: Remove this. Temporary for testing.
+  private boolean shouldReUse;
 
   BlockingQueue<AMSchedulerEvent> eventQueue
     = new LinkedBlockingQueue<AMSchedulerEvent>();
@@ -199,6 +203,8 @@ public class RMContainerAllocator extends AbstractService
     maxReducePreemptionLimit = conf.getFloat(
         MRJobConfig.MR_AM_JOB_REDUCE_PREEMPTION_LIMIT,
         MRJobConfig.DEFAULT_MR_AM_JOB_REDUCE_PREEMPTION_LIMIT);
+    shouldReUse = conf.getBoolean("am.scheduler.shouldReuse", false);
+    LOG.info("XXX: ShouldReUse: " + shouldReUse);
     RackResolver.init(conf);
   }
 
@@ -457,17 +463,28 @@ protected synchronized void handleEvent(AMSchedulerEvent sEvent) {
     assignContainers();
     requestContainers();
   }
-  
-  // TODO Override for container re-use.
+
   protected void containerAvailable(ContainerId containerId) {
-    // For now releasing the container.
-    // allocatedContainerIds.add(containerId);
-    sendEvent(new AMContainerEvent(containerId,
-        AMContainerEventType.C_STOP_REQUEST));
-    // XXX A release should not be required. Only required when a container
-    // cannot be assigned, or if there's an explicit request to stop the container,
-    // in which case the release request will go out from the container itself.
+    if (shouldReUse) {
+      availableContainerIds.add(containerId);
+      handle(new AMSchedulerEventContainersAllocated(
+          Collections.<ContainerId> emptyList(), true));
+    } else {
+      sendEvent(new AMContainerEvent(containerId,
+          AMContainerEventType.C_STOP_REQUEST));
+    }
   }
+
+  // TODO Override for container re-use.
+//  protected void containerAvailable(ContainerId containerId) {
+//    // For now releasing the container.
+//    // allocatedContainerIds.add(containerId);
+//    sendEvent(new AMContainerEvent(containerId,
+//        AMContainerEventType.C_STOP_REQUEST));
+//    // XXX A release should not be required. Only required when a container
+//    // cannot be assigned, or if there's an explicit request to stop the container,
+//    // in which case the release request will go out from the container itself.
+//  }
 
   @SuppressWarnings("unchecked")
   private int maybeComputeNormalizedRequestForType(
@@ -877,8 +894,11 @@ protected synchronized void handleEvent(AMSchedulerEvent sEvent) {
               
               // TODO XXX: Launch only if not already running.
               // TODO XXX: Change this event to be more specific.
-              eventHandler.handle(new AMContainerLaunchRequestEvent(containerId, attemptToLaunchRequestMap.get(assigned.attemptID), requestor.getApplicationAcls(), getJob().getID()));
+              if (appContext.getContainer(containerId).getState() == AMContainerState.ALLOCATED) {
+                eventHandler.handle(new AMContainerLaunchRequestEvent(containerId, attemptToLaunchRequestMap.get(assigned.attemptID), requestor.getApplicationAcls(), getJob().getID()));
+              }
               eventHandler.handle(new AMContainerAssignTAEvent(containerId, assigned.attemptID, attemptToLaunchRequestMap.get(assigned.attemptID).getRemoteTask()));
+              // TODO XXX: If re-using, get rid of one request.
 
               assignedRequests.add(allocated, assigned.attemptID);
 

@@ -466,6 +466,8 @@ public abstract class TaskAttemptImpl implements TaskAttempt,
       LOG.debug("Processing " + event.getTaskAttemptID() + " of type "
           + event.getType());
     }
+    LOG.info("XXX: Processing " + event.getTaskAttemptID() + " of type "
+        + event.getType() + " while in state: " + getState());
     writeLock.lock();
     try {
       final TaskAttemptState oldState = getState();

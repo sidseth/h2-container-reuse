@@ -18,7 +18,7 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.DataOutputBuffer;
-import org.apache.hadoop.mapred.MapReduceChildJVM;
+import org.apache.hadoop.mapred.MapReduceChildJVM2;
 import org.apache.hadoop.mapred.ShuffleHandler;
 import org.apache.hadoop.mapred.Task;
 import org.apache.hadoop.mapred.WrappedJvmID;
@@ -208,10 +208,10 @@ public class TaskAttemptImplHelpers {
     Map<String, String> env = commonContainerSpec.getEnvironment();
     Map<String, String> myEnv = new HashMap<String, String>(env.size());
     myEnv.putAll(env);
-    MapReduceChildJVM.setVMEnv(myEnv, remoteTask);
+    MapReduceChildJVM2.setVMEnv(myEnv, remoteTask);
 
     // Set up the launch command
-    List<String> commands = MapReduceChildJVM.getVMCommand(
+    List<String> commands = MapReduceChildJVM2.getVMCommand(
         taskAttemptListener.getAddress(), remoteTask, jvmID);
 
     // Duplicate the ByteBuffers for access by multiple containers.
