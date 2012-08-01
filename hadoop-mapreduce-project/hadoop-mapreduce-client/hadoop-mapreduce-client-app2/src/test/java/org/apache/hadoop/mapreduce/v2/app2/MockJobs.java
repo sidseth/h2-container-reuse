@@ -606,6 +606,12 @@ public class MockJobs extends MockApps {
         jobConf.addResource(fc.open(configFile));
         return jobConf;
       }
+
+      @Override
+      public Configuration getConf() {
+        // TODO Auto-generated method stub
+        return null;
+      }
     };
   }
 

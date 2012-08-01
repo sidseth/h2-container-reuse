@@ -36,6 +36,7 @@ import org.apache.hadoop.mapreduce.JobID;
 import org.apache.hadoop.mapreduce.MRJobConfig;
 import org.apache.hadoop.mapreduce.OutputCommitter;
 import org.apache.hadoop.mapreduce.TypeConverter;
+import org.apache.hadoop.mapreduce.jobhistory.ContainerHeartbeatHandler;
 import org.apache.hadoop.mapreduce.jobhistory.JobHistoryEvent;
 import org.apache.hadoop.mapreduce.jobhistory.NormalizedResourceEvent;
 import org.apache.hadoop.mapreduce.security.token.JobTokenSecretManager;
@@ -67,6 +68,7 @@ import org.apache.hadoop.mapreduce.v2.app2.launcher.ContainerLauncher;
 import org.apache.hadoop.mapreduce.v2.app2.launcher.ContainerLauncherEvent;
 import org.apache.hadoop.mapreduce.v2.app2.rm.ContainerAllocator;
 import org.apache.hadoop.mapreduce.v2.app2.rm.ContainerAllocatorEvent;
+import org.apache.hadoop.mapreduce.v2.app2.rm.NMCommunicatorEvent;
 import org.apache.hadoop.mapreduce.v2.app2.taskclean.TaskCleaner;
 import org.apache.hadoop.mapreduce.v2.app2.taskclean.TaskCleanupEvent;
 import org.apache.hadoop.mapreduce.v2.util.MRApps;
@@ -357,22 +359,28 @@ public class MRApp extends MRAppMaster {
   }
 
   @Override
-  protected TaskAttemptListener createTaskAttemptListener(AppContext context) {
+  protected TaskAttemptListener createTaskAttemptListener(AppContext context,
+      TaskHeartbeatHandler thh, ContainerHeartbeatHandler chh) {
     return new TaskAttemptListener(){
       @Override
       public InetSocketAddress getAddress() {
         return NetUtils.createSocketAddr("localhost:54321");
       }
+      
       @Override
-      public void registerLaunchedTask(TaskAttemptId attemptID,
-          WrappedJvmID jvmID) {
+      public void registerRunningJvm(WrappedJvmID jvmID, ContainerId containerId) {
+        // TODO Auto-generated method stub
+        
       }
       @Override
-      public void unregister(TaskAttemptId attemptID, WrappedJvmID jvmID) {
+      public void unregisterRunningJvm(WrappedJvmID jvmID) {
+        // TODO Auto-generated method stub
+        
       }
       @Override
-      public void registerPendingTask(org.apache.hadoop.mapred.Task task,
-          WrappedJvmID jvmID) {
+      public void unregisterTaskAttempt(TaskAttemptId attemptID) {
+        // TODO Auto-generated method stub
+        
       }
     };
   }
@@ -400,7 +408,7 @@ public class MRApp extends MRAppMaster {
     public MockContainerLauncher() {
     }
 
-    @Override
+//    @Override
     public void handle(ContainerLauncherEvent event) {
       switch (event.getType()) {
       case CONTAINER_REMOTE_LAUNCH:
@@ -417,6 +425,12 @@ public class MRApp extends MRAppMaster {
         break;
       }
     }
+
+    @Override
+    public void handle(NMCommunicatorEvent event) {
+      // TODO Auto-generated method stub
+      
+    }
   }
 
   protected void attemptLaunched(TaskAttemptId attemptID) {
@@ -428,7 +442,7 @@ public class MRApp extends MRAppMaster {
     }
   }
 
-  @Override
+//  @Override
   protected ContainerAllocator createContainerAllocator(
       ClientService clientService, final AppContext context) {
     return new MRAppContainerAllocator();
@@ -530,7 +544,7 @@ public class MRApp extends MRAppMaster {
           new JobTokenSecretManager(), new Credentials(), clock,
           getCompletedTaskFromPreviousRun(), metrics, committer,
           newApiCommitter, user, System.currentTimeMillis(), getAllAMInfos(),
-          appContext);
+          null, appContext);
 
       // This "this leak" is okay because the retained pointer is in an
       //  instance variable.
