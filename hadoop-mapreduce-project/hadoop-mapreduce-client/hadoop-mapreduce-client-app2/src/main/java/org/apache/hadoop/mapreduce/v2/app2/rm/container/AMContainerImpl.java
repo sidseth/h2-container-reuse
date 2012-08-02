@@ -261,7 +261,7 @@ public class AMContainerImpl implements AMContainer {
   @Override
   public void handle(AMContainerEvent event) {
     this.writeLock.lock();
-    LOG.info("XXX: Processing ContainerEvent" + event.getContainerId() + " of type "
+    LOG.info("XXX: Processing ContainerEvent: " + event.getContainerId() + " of type "
         + event.getType() + " while in state: " + getState());
     try {
       final AMContainerState oldState = getState();

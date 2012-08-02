@@ -67,10 +67,14 @@ public class RMContainerRequestor extends RMCommunicator implements EventHandler
   private final Clock clock;
 
   private int lastResponseID;
-  private Resource availableResources;
+  private Resource availableResources; // aka headroom.
   private long retrystartTime;
   private long retryInterval;
-
+  
+  private int numContainerReleaseRequests;
+  private int numContainersAllocated;
+  private int numFinishedContainers; // Not very useful.
+  
   // TODO XXX: Lots of cleanup.
   
   // TODO XXX: Maintain some statistics on containers allocated, released etc.
@@ -89,24 +93,22 @@ public class RMContainerRequestor extends RMCommunicator implements EventHandler
   private Set<ContainerId> release = new TreeSet<ContainerId>();
   
   private Lock releaseLock = new ReentrantLock();
+  private Lock askLock = new ReentrantLock();
+  private final List<ContainerId> emptyReleaseList = new ArrayList<ContainerId>(0);
+  private final List<ResourceRequest> emptyAskList = new ArrayList<ResourceRequest>();
   
-//  private boolean nodeBlacklistingEnabled;
-//  private int blacklistDisablePercent;
-//  private AtomicBoolean ignoreBlacklisting = new AtomicBoolean(false);
-//  private int blacklistedNodeCount = 0;
+  // TODO XXX: May need to pass this to the NodeManager.
   private int clusterNmCount = 0;
-//  private int maxTaskFailuresPerNode;
-//  private final Map<String, Integer> nodeFailures = new HashMap<String, Integer>();
-//  private final Set<String> blacklistedNodes = Collections
-//      .newSetFromMap(new ConcurrentHashMap<String, Boolean>());
-
+  
+  // TODO XXX Consider allowing sync comm between the requestor and allocator... 
+  
   public RMContainerRequestor(ClientService clientService, AppContext context, Clock clock) {
     super(clientService, context);
     this.clock = clock;
   }
   
   public static class ContainerRequest {
-    final TaskAttemptId attemptID;
+//    final TaskAttemptId attemptID;
     final Resource capability;
     final String[] hosts;
     final String[] racks;
@@ -128,7 +130,7 @@ public class RMContainerRequestor extends RMCommunicator implements EventHandler
         Resource capability, String[] hosts, String[] racks, 
         Priority priority) {
       // TODO XXX: Should be possible to get rid of this.
-      this.attemptID = attemptID;
+//      this.attemptID = attemptID;
       this.capability = capability;
       this.hosts = hosts;
       this.racks = racks;
@@ -137,7 +139,7 @@ public class RMContainerRequestor extends RMCommunicator implements EventHandler
     
     public String toString() {
       StringBuilder sb = new StringBuilder();
-      sb.append("AttemptId[").append(attemptID).append("]");
+//      sb.append("AttemptId[").append(attemptID).append("]");
       sb.append("Capability[").append(capability).append("]");
       sb.append("Priority[").append(priority).append("]");
       return sb.toString();
@@ -147,76 +149,23 @@ public class RMContainerRequestor extends RMCommunicator implements EventHandler
   @Override
   public void init(Configuration conf) {
     super.init(conf);
-//    nodeBlacklistingEnabled = 
-//      conf.getBoolean(MRJobConfig.MR_AM_JOB_NODE_BLACKLISTING_ENABLE, true);
-//    LOG.info("nodeBlacklistingEnabled:" + nodeBlacklistingEnabled);
-//    maxTaskFailuresPerNode = 
-//      conf.getInt(MRJobConfig.MAX_TASK_FAILURES_PER_TRACKER, 3);
-//    blacklistDisablePercent =
-//        conf.getInt(
-//            MRJobConfig.MR_AM_IGNORE_BLACKLISTING_BLACKLISTED_NODE_PERECENT,
-//            MRJobConfig.DEFAULT_MR_AM_IGNORE_BLACKLISTING_BLACKLISTED_NODE_PERCENT);
-//    LOG.info("maxTaskFailuresPerNode is " + maxTaskFailuresPerNode);
-//    if (blacklistDisablePercent < -1 || blacklistDisablePercent > 100) {
-//      throw new YarnException("Invalid blacklistDisablePercent: "
-//          + blacklistDisablePercent
-//          + ". Should be an integer between 0 and 100 or -1 to disabled");
-//    }
-//    LOG.info("blacklistDisablePercent is " + blacklistDisablePercent);
+
     retrystartTime = clock.getTime();
     retryInterval = getConfig().getLong(MRJobConfig.MR_AM_TO_RM_WAIT_INTERVAL_MS,
         MRJobConfig.DEFAULT_MR_AM_TO_RM_WAIT_INTERVAL_MS);
   }
-
-  protected AMResponse makeRemoteRequest() throws Exception {
-    
-    ArrayList<ContainerId> clonedReleaseList;
-    releaseLock.lock();
-    try {
-      clonedReleaseList = new ArrayList<ContainerId>(release);
-      release.clear();
-    } finally {
-      releaseLock.unlock();
-    }
-    
-      AllocateRequest allocateRequest = BuilderUtils.newAllocateRequest(
-          applicationAttemptId, lastResponseID, super.getApplicationProgress(),
-          new ArrayList<ResourceRequest>(ask), clonedReleaseList);
-      AllocateResponse allocateResponse = null;
-      try {
-        allocateResponse = scheduler.allocate(allocateRequest);
-      } catch (Exception e) {
-        releaseLock.lock();
-        try {
-          release.addAll(clonedReleaseList);
-        } finally {
-          releaseLock.unlock();
-        }
-        throw e;
-      }
-      AMResponse response = allocateResponse.getAMResponse();
-      lastResponseID = response.getResponseId();
-      availableResources = response.getAvailableResources();
-      clusterNmCount = allocateResponse.getNumClusterNodes();
-
-      if (ask.size() > 0 || clonedReleaseList.size() > 0) {
-        LOG.info("getResources() for " + applicationId + ":" + " ask="
-            + ask.size() + " release= " + clonedReleaseList.size() + " newContainers="
-            + response.getAllocatedContainers().size() + " finishedContainers="
-            + response.getCompletedContainersStatuses().size()
-            + " resourcelimit=" + availableResources + " knownNMs="
-            + clusterNmCount);
-      }
-
-      ask.clear();
-      return response;
-  }
   
+  public void stop(Configuration conf) {
+    LOG.info("NumAllocatedContainers: " + numContainersAllocated
+           + "NumFinihsedContainers: " + numFinishedContainers
+           + "NumReleaseRequests: " + numContainerReleaseRequests);
+    super.stop();
+  }
 
   protected Resource getAvailableResources() {
     return availableResources;
   }
-  
+
   public void addContainerReq(ContainerRequest req) {
     // Create resource requests
     for (String host : req.hosts) {
@@ -276,12 +225,19 @@ public class RMContainerRequestor extends RMCommunicator implements EventHandler
     remoteRequest.setNumContainers(remoteRequest.getNumContainers() + 1);
 
     // Note this down for next interaction with ResourceManager
-    ask.add(remoteRequest);
+    int askSize = 0;
+    askLock.lock();
+    try {
+      ask.add(remoteRequest);
+      askSize = ask.size();
+    } finally {
+      askLock.unlock();
+    }
     if (LOG.isDebugEnabled()) {
       LOG.debug("addResourceRequest:" + " applicationId="
           + applicationId.getId() + " priority=" + priority.getPriority()
           + " resourceName=" + resourceName + " numContainers="
-          + remoteRequest.getNumContainers() + " #asks=" + ask.size());
+          + remoteRequest.getNumContainers() + " #asks=" + askSize);
     }
   }
 
@@ -306,7 +262,7 @@ public class RMContainerRequestor extends RMCommunicator implements EventHandler
       LOG.debug("BEFORE decResourceRequest:" + " applicationId="
           + applicationId.getId() + " priority=" + priority.getPriority()
           + " resourceName=" + resourceName + " numContainers="
-          + remoteRequest.getNumContainers() + " #asks=" + ask.size());
+          + remoteRequest.getNumContainers() + " #asks=" + getAskSize());
     }
 
     remoteRequest.setNumContainers(remoteRequest.getNumContainers() -1);
@@ -319,25 +275,39 @@ public class RMContainerRequestor extends RMCommunicator implements EventHandler
         remoteRequestsTable.remove(priority);
       }
       //remove from ask if it may have
-      ask.remove(remoteRequest);
+      askLock.lock();
+      try {
+        ask.remove(remoteRequest);
+      } finally {
+        askLock.unlock();
+      }
     } else {
-      ask.add(remoteRequest);//this will override the request if ask doesn't
+      askLock.lock();
+      try {
+        ask.add(remoteRequest);//this will override the request if ask doesn't
       //already have it.
+      } finally {
+        askLock.unlock();
+      }
     }
 
     if (LOG.isDebugEnabled()) {
       LOG.info("AFTER decResourceRequest:" + " applicationId="
           + applicationId.getId() + " priority=" + priority.getPriority()
           + " resourceName=" + resourceName + " numContainers="
-          + remoteRequest.getNumContainers() + " #asks=" + ask.size());
+          + remoteRequest.getNumContainers() + " #asks=" + getAskSize());
+    }
+  }
+  
+  private int getAskSize() {
+    askLock.lock();
+    try {
+      return ask.size();
+    } finally {
+      askLock.unlock();
     }
   }
 
-//  protected void release(ContainerId containerId) {
-//    release.add(containerId);
-//  }
-  
-  
   @SuppressWarnings("unchecked")
   @Override
   protected void heartbeat() throws Exception {
@@ -345,33 +315,30 @@ public class RMContainerRequestor extends RMCommunicator implements EventHandler
     AMResponse response = errorCheckedMakeRemoteRequest();
     
     int newHeadRoom = getAvailableResources() != null ? getAvailableResources().getMemory() : 0;
-    List<Container> newContainers = response.getAllocatedContainers();
-    // TODO Log newly available containers.
+    List<Container> newContainers = response.getAllocatedContainers();    
+    logNewContainers(newContainers);
+    numContainersAllocated += newContainers.size();
+    
     List<ContainerStatus> finishedContainers = response.getCompletedContainersStatuses();
+    logFinishedContainers(finishedContainers);
+    numFinishedContainers += finishedContainers.size();
+    
     List<NodeReport> updatedNodeReports = response.getUpdatedNodes();
+    logUpdatedNodes(updatedNodeReports);
  
     // Inform the Containers about completion..
     for (ContainerStatus c : finishedContainers) {
       eventHandler.handle(new AMContainerEventReleased(c));
     }
-
-    // TODO XXX Needs to know if a node is blacklisted, to remove it from the request table.
-    // Assumption is that the node never becomes healthy agian.
-    
-    // TODO XXX In case of a node going health / unhealthy - the request tables can
-    // be leaved untouched. Relying on the RM not allocating Containers on unhealthy nodes.
-    // There can however be a check to ensure the node is healthy before trying to allocate
-    // a container.
-    
+   
     // Inform the scheduler about new containers.
     List<ContainerId> newContainerIds;
     if (newContainers.size() > 0) {
       newContainerIds = new ArrayList<ContainerId>(newContainers.size());
-      // TODO XXX Potentially add new nodes.
-      // TODO Figure out a good flow to add a new node.
       for (Container container : newContainers) {
         context.getAllContainers().addNewContainer(container);
         newContainerIds.add(container.getId());
+        // TODO XXX: Maybe send this out as an Asynchrounous event ? | Scheduler events will also have to be async in that case, and the order is critical. 
         context.getAllNodes().nodeSeen(container.getNodeId());
       }
       eventHandler.handle(new AMSchedulerEventContainersAllocated(
@@ -381,34 +348,11 @@ public class RMContainerRequestor extends RMCommunicator implements EventHandler
     //Inform the nodes about sate changes.
     for (NodeReport nr : updatedNodeReports) {
       eventHandler.handle(new AMNodeEventStateChanged(nr));
-      // TODO XXX Does the Allocator need to be aware of this.
-      // Likely yes, so that it can clean up it's tables.
+      // Allocator will find out from the node, if at all.
+      // Relying on the RM to not allocated containers on an unhealthy node.
     }
-    
-    
-    
-    // TODO Reduce requests 
-    
-    // Handle 
-      // - lost nodes.
-      // - Newly allocated containers
-    // - Changes in headroom
-      // - Newly allocated nodes.
-      // - Failed / Released containers.
-      // - Completed containers.
-    // - Total number of nodes in the cluster.
-  
-    // Local events
-    // - Container failed on a specific host. Local blacklisting.
-    // - Needs to be removed from the RMComm requests table.
-    
-    // Who's responsibility is it to keep track of failed tasks, withdrawing requests etc.
-    // Ideally... requests should be stored along with Nodes ?
   }
-  
-  
-  
-  
+
   
   @SuppressWarnings("unchecked")
   protected AMResponse errorCheckedMakeRemoteRequest() throws Exception {
@@ -442,6 +386,37 @@ public class RMContainerRequestor extends RMCommunicator implements EventHandler
     }
     return response;
   }
+  
+  
+  protected AMResponse makeRemoteRequest() throws Exception {
+    List<ContainerId> clonedReleaseList = cloneAndClearReleaseList();
+    List<ResourceRequest> clonedAskList = cloneAndClearAskList();
+
+    AllocateRequest allocateRequest = BuilderUtils.newAllocateRequest(
+        applicationAttemptId, lastResponseID, super.getApplicationProgress(),
+        clonedAskList, clonedReleaseList);
+    AllocateResponse allocateResponse = null;
+    try {
+      allocateResponse = scheduler.allocate(allocateRequest);
+    } catch (Exception e) {
+      rePopulateListsOnError(clonedReleaseList, clonedAskList);
+      throw e;
+    }
+    AMResponse response = allocateResponse.getAMResponse();
+    lastResponseID = response.getResponseId();
+    availableResources = response.getAvailableResources();
+    clusterNmCount = allocateResponse.getNumClusterNodes();
+
+    if (clonedAskList.size() > 0 || clonedReleaseList.size() > 0) {
+      LOG.info("getResources() for " + applicationId + ":" + " ask="
+          + clonedAskList.size() + " release= " + clonedReleaseList.size() 
+          + " newContainers=" + response.getAllocatedContainers().size() 
+          + " finishedContainers="+ response.getCompletedContainersStatuses().size()
+          + " resourcelimit=" + availableResources + " knownNMs=" + clusterNmCount);
+    }
+
+    return response;
+  }
 
   @Override
   public void handle(RMCommunicatorEvent rawEvent) {
@@ -450,6 +425,7 @@ public class RMContainerRequestor extends RMCommunicator implements EventHandler
       RMCommunicatorContainerDeAllocateRequestEvent event = (RMCommunicatorContainerDeAllocateRequestEvent)rawEvent;
       releaseLock.lock();
       try {
+        numContainerReleaseRequests++;
         release.add(event.getContainerId());
       } finally {
         releaseLock.unlock();
@@ -463,8 +439,84 @@ public class RMContainerRequestor extends RMCommunicator implements EventHandler
       break;
     default:
       break;
-    
     }
-    
+  }
+
+
+  private List<ContainerId> cloneAndClearReleaseList() {
+    ArrayList<ContainerId> clonedReleaseList;
+    releaseLock.lock();
+    try {
+      if (release.size() == 0) {
+        return emptyReleaseList;
+      }
+      clonedReleaseList = new ArrayList<ContainerId>(release);
+      release.clear();
+      return clonedReleaseList;
+    } finally {
+      releaseLock.unlock();
+    }
+  }
+
+  private List<ResourceRequest> cloneAndClearAskList() {
+    ArrayList<ResourceRequest> clonedAskList;
+    askLock.lock();
+    try {
+      if (ask.size() == 0) {
+        return emptyAskList;
+      }
+      clonedAskList = new ArrayList<ResourceRequest>(ask);
+      ask.clear();
+      return clonedAskList;
+    } finally {
+      askLock.unlock();
+    }
+  }
+
+  private void rePopulateListsOnError(List<ContainerId> clonedReleaseList,
+      List<ResourceRequest> clonedAskList) {
+    releaseLock.lock();
+    try {
+      release.addAll(clonedReleaseList);
+    } finally {
+      releaseLock.unlock();
+    }
+    askLock.lock();
+    try {
+      ask.addAll(clonedAskList);
+      // TODO XXX: Asks cannot be populated like this. Would be better to
+      // iterate over the asks and get corresponding requests from the main
+      // table.
+    } finally {
+      askLock.unlock();
+    }
+  }
+  
+
+  private void logNewContainers(List<Container> newContainers) {
+    if (newContainers.size() > 0) {
+      LOG.info("Got allocated " + newContainers.size() + " containers");
+      for (Container c : newContainers) {
+        LOG.info("AllocatedContainer: " + c);
+      }
+    }
+  }
+  
+  private void logFinishedContainers(List<ContainerStatus> finishedContainers) {
+    if (finishedContainers.size() > 0) {
+      LOG.info(finishedContainers.size() + " finished");
+      for (ContainerStatus cs : finishedContainers) {
+        LOG.info("FinihsedContainer: " + cs);
+      }
+    }
+  }
+  
+  private void logUpdatedNodes(List<NodeReport> nodeReports) {
+    if (nodeReports.size() > 0) {
+      LOG.info(nodeReports.size() + " nodes changed state");
+      for (NodeReport nr : nodeReports) {
+        LOG.info("UpdatedNodeReport: " + nr);
+      }
+    }
   }
 }

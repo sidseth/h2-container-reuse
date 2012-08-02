@@ -46,4 +46,23 @@ public class AMNodeMap extends ConcurrentHashMap<NodeId, AMNode> implements
       get(nodeId).handle(event);
     }
   }
+  
+  
+  
+//nodeBlacklistingEnabled = 
+//conf.getBoolean(MRJobConfig.MR_AM_JOB_NODE_BLACKLISTING_ENABLE, true);
+//LOG.info("nodeBlacklistingEnabled:" + nodeBlacklistingEnabled);
+//maxTaskFailuresPerNode = 
+//conf.getInt(MRJobConfig.MAX_TASK_FAILURES_PER_TRACKER, 3);
+//blacklistDisablePercent =
+//  conf.getInt(
+//      MRJobConfig.MR_AM_IGNORE_BLACKLISTING_BLACKLISTED_NODE_PERECENT,
+//      MRJobConfig.DEFAULT_MR_AM_IGNORE_BLACKLISTING_BLACKLISTED_NODE_PERCENT);
+//LOG.info("maxTaskFailuresPerNode is " + maxTaskFailuresPerNode);
+//if (blacklistDisablePercent < -1 || blacklistDisablePercent > 100) {
+//throw new YarnException("Invalid blacklistDisablePercent: "
+//    + blacklistDisablePercent
+//    + ". Should be an integer between 0 and 100 or -1 to disabled");
+//}
+//LOG.info("blacklistDisablePercent is " + blacklistDisablePercent);
 }

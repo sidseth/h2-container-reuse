@@ -17,6 +17,7 @@ public class AMSchedulerTAStopRequestEvent extends AMSchedulerEvent {
     return this.attemptId;
   }
 
+  // TODO XXX: Rename
   public boolean failed() {
     return failed;
   }
