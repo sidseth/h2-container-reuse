@@ -32,7 +32,6 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.mapreduce.MRJobConfig;
-import org.apache.hadoop.mapreduce.v2.api.records.TaskAttemptId;
 import org.apache.hadoop.mapreduce.v2.app2.AppContext;
 import org.apache.hadoop.mapreduce.v2.app2.client.ClientService;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.JobEvent;
@@ -108,38 +107,30 @@ public class RMContainerRequestor extends RMCommunicator implements EventHandler
   }
   
   public static class ContainerRequest {
-//    final TaskAttemptId attemptID;
     final Resource capability;
     final String[] hosts;
     final String[] racks;
-    //final boolean earlierAttemptFailed;
     final Priority priority;
-   
+
     public ContainerRequest(AMSchedulerTALaunchRequestEvent event,
         Priority priority) {
-      this(event.getAttemptID(), event.getCapability(), event.getHosts(),
-          event.getRacks(), priority);
+      this(event.getCapability(), event.getHosts(), event.getRacks(), priority);
     }
-    
+
     public ContainerRequest(ContainerRequestEvent event, Priority priority) {
-      this(event.getAttemptID(), event.getCapability(), event.getHosts(),
-          event.getRacks(), priority);
+      this(event.getCapability(), event.getHosts(), event.getRacks(), priority);
     }
-    
-    public ContainerRequest(TaskAttemptId attemptID,
-        Resource capability, String[] hosts, String[] racks, 
-        Priority priority) {
-      // TODO XXX: Should be possible to get rid of this.
-//      this.attemptID = attemptID;
+
+    public ContainerRequest(Resource capability, String[] hosts,
+        String[] racks, Priority priority) {
       this.capability = capability;
       this.hosts = hosts;
       this.racks = racks;
       this.priority = priority;
     }
-    
+
     public String toString() {
       StringBuilder sb = new StringBuilder();
-//      sb.append("AttemptId[").append(attemptID).append("]");
       sb.append("Capability[").append(capability).append("]");
       sb.append("Priority[").append(priority).append("]");
       return sb.toString();

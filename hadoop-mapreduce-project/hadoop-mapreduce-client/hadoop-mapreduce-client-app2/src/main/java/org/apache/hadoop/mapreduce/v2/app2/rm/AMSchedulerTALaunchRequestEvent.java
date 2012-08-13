@@ -9,6 +9,9 @@ import org.apache.hadoop.yarn.api.records.Resource;
 
 public class AMSchedulerTALaunchRequestEvent extends AMSchedulerEvent {
 
+  // TODO XXX: Get rid of remoteTask from here. Can be forgottent after it has been assigned.
+  //.... Maybe have the Container talk to the TaskAttempt to pull in the remote task.
+  
   private final TaskAttemptId attemptId;
   private final boolean rescheduled;
   private final Resource capability;

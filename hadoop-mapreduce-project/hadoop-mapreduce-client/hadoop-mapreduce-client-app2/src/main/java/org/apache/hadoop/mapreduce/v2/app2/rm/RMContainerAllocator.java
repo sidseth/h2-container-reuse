@@ -140,8 +140,8 @@ public class RMContainerAllocator extends AbstractService
   */
   
   //reduces which are not yet scheduled
-  private final LinkedList<ContainerRequest> pendingReduces = 
-    new LinkedList<AMSchedulerTALaunchRequestEvent>();
+  private final LinkedList<ContainerRequestInfo> pendingReduces = 
+    new LinkedList<ContainerRequestInfo>();
 
   //holds information about the assigned containers to task attempts
   private final AssignedRequests assignedRequests = new AssignedRequests();
@@ -160,7 +160,6 @@ public class RMContainerAllocator extends AbstractService
   private int hostLocalAssigned = 0;
   private int rackLocalAssigned = 0;
   
-  private boolean canLaunchReduces = false;
   private boolean recalculateReduceSchedule = false;
   private int mapResourceReqt;//memory
   private int reduceResourceReqt;//memory
@@ -367,9 +366,11 @@ protected synchronized void handleEvent(AMSchedulerEvent sEvent) {
           TaskType.REDUCE, reduceResourceReqt);
       event.getCapability().setMemory(reduceResourceReqt);
       if (event.isRescheduled()) {
-        pendingReduces.addFirst(new ContainerRequest(event, PRIORITY_REDUCE));
+        pendingReduces.addFirst(new ContainerRequestInfo(new ContainerRequest(
+            event, PRIORITY_REDUCE), event));
       } else {
-        pendingReduces.addLast(new ContainerRequest(event, PRIORITY_REDUCE));
+        pendingReduces.addLast(new ContainerRequestInfo(new ContainerRequest(
+            event, PRIORITY_REDUCE), event));
       }
     }
   }
@@ -544,7 +545,7 @@ protected synchronized void handleEvent(AMSchedulerEvent sEvent) {
         //ramp down all scheduled reduces if any
         //(since reduces are scheduled at higher priority than maps)
         LOG.info("Ramping down all scheduled reduces:" + scheduledRequests.reduces.size());
-        for (ContainerRequest req : scheduledRequests.reduces.values()) {
+        for (ContainerRequestInfo req : scheduledRequests.reduces.values()) {
           pendingReduces.add(req);
         }
         scheduledRequests.reduces.clear();
@@ -663,7 +664,7 @@ protected synchronized void handleEvent(AMSchedulerEvent sEvent) {
 
   @Private
   public void scheduleAllReduces() {
-    for (ContainerRequest req : pendingReduces) {
+    for (ContainerRequestInfo req : pendingReduces) {
       scheduledRequests.addReduce(req);
     }
     pendingReduces.clear();
@@ -673,7 +674,7 @@ protected synchronized void handleEvent(AMSchedulerEvent sEvent) {
   public void rampUpReduces(int rampUp) {
     //more reduce to be scheduled
     for (int i = 0; i < rampUp; i++) {
-      ContainerRequest request = pendingReduces.removeFirst();
+      ContainerRequestInfo request = pendingReduces.removeFirst();
       scheduledRequests.addReduce(request);
     }
   }
@@ -682,7 +683,7 @@ protected synchronized void handleEvent(AMSchedulerEvent sEvent) {
   public void rampDownReduces(int rampDown) {
     //remove from the scheduled and move back to pending
     for (int i = 0; i < rampDown; i++) {
-      ContainerRequest request = scheduledRequests.removeReduce();
+      ContainerRequestInfo request = scheduledRequests.removeReduce();
       pendingReduces.add(request);
     }
   }
@@ -728,36 +729,36 @@ protected synchronized void handleEvent(AMSchedulerEvent sEvent) {
       new HashMap<String, LinkedList<TaskAttemptId>>();
     private final Map<String, LinkedList<TaskAttemptId>> mapsRackMapping = 
       new HashMap<String, LinkedList<TaskAttemptId>>();
-    private final Map<TaskAttemptId, ContainerRequest> maps = 
-      new LinkedHashMap<TaskAttemptId, ContainerRequest>();
+    private final Map<TaskAttemptId, ContainerRequestInfo> maps = 
+      new LinkedHashMap<TaskAttemptId, ContainerRequestInfo>();
     
-    private final LinkedHashMap<TaskAttemptId, ContainerRequest> reduces = 
-      new LinkedHashMap<TaskAttemptId, ContainerRequest>();
+    private final LinkedHashMap<TaskAttemptId, ContainerRequestInfo> reduces = 
+      new LinkedHashMap<TaskAttemptId, ContainerRequestInfo>();
     
     
     boolean remove(TaskAttemptId tId) {
-      ContainerRequest req = null;
+      ContainerRequestInfo req = null;
       if (tId.getTaskId().getTaskType().equals(TaskType.MAP)) {
         req = maps.remove(tId);
       } else {
         req = reduces.remove(tId);
       }
-      // TODO XXX: Remoev from mapHostMapping, mapsRackMapping tables at some point.
+      // TODO XXX: Remove from mapsHostMapping and mapsRackMapping
       
       if (req == null) {
         return false;
       } else {
-        requestor.decContainerReq(req);
+        requestor.decContainerReq(req.getContainerRequest());
         return true;
       }
     }
     
-    ContainerRequest removeReduce() {
-      Iterator<Entry<TaskAttemptId, ContainerRequest>> it = reduces.entrySet().iterator();
+    ContainerRequestInfo removeReduce() {
+      Iterator<Entry<TaskAttemptId, ContainerRequestInfo>> it = reduces.entrySet().iterator();
       if (it.hasNext()) {
-        Entry<TaskAttemptId, ContainerRequest> entry = it.next();
+        Entry<TaskAttemptId, ContainerRequestInfo> entry = it.next();
         it.remove();
-        requestor.decContainerReq(entry.getValue());
+        requestor.decContainerReq(entry.getValue().getContainerRequest());
         return entry.getValue();
       }
       return null;
@@ -796,14 +797,14 @@ protected synchronized void handleEvent(AMSchedulerEvent sEvent) {
        request = new ContainerRequest(event, PRIORITY_MAP);
       }
 //      ContainerRequestInfo csInfo = new ContainerRequestInfo(request, event.getAttemptID());
-      maps.put(event.getAttemptID(), request);
+      maps.put(event.getAttemptID(), new ContainerRequestInfo(request, event));
       requestor.addContainerReq(request);
     }
     
     
-    void addReduce(ContainerRequest req) {
-      reduces.put(req.attemptID, req);
-      requestor.addContainerReq(req);
+    void addReduce(ContainerRequestInfo req) {
+      reduces.put(req.getAttemptId(), req);
+      requestor.addContainerReq(req.getContainerRequest());
     }
     
     @SuppressWarnings("unchecked")
@@ -853,7 +854,7 @@ protected synchronized void handleEvent(AMSchedulerEvent sEvent) {
         
 //        boolean blackListed = false;
         boolean nodeUsable = true;
-        ContainerRequest assigned = null;
+        ContainerRequestInfo assigned = null;
         
         if (isAssignable) {
           // do not assign if allocated container is on a  
@@ -875,7 +876,7 @@ protected synchronized void handleEvent(AMSchedulerEvent sEvent) {
 
             // find the request matching this allocated container 
             // and replace it with a new one 
-            ContainerRequest toBeReplacedReq = 
+            ContainerRequestInfo toBeReplacedReq = 
                 getContainerReqToReplace(allocated);
             
             // TODO XXX: Requirement here is to be able to figure out the taskAttemptId for which this request was put. If that's being replaced, update corresponding maps with info.
@@ -883,18 +884,18 @@ protected synchronized void handleEvent(AMSchedulerEvent sEvent) {
             
             if (toBeReplacedReq != null) {
               LOG.info("Placing a new container request for task attempt " 
-                  + toBeReplacedReq.attemptID);
-              ContainerRequest newReq = 
+                  + toBeReplacedReq.getAttemptId());
+              ContainerRequestInfo newReq = 
                   getFilteredContainerRequest(toBeReplacedReq);
-              requestor.decContainerReq(toBeReplacedReq);
-              if (toBeReplacedReq.attemptID.getTaskId().getTaskType() ==
+              requestor.decContainerReq(toBeReplacedReq.getContainerRequest());
+              if (toBeReplacedReq.getAttemptId().getTaskId().getTaskType() ==
                   TaskType.MAP) {
-                maps.put(newReq.attemptID, newReq);
+                maps.put(newReq.getAttemptId(), newReq);
               }
               else {
-                reduces.put(newReq.attemptID, newReq);
+                reduces.put(newReq.getAttemptId(), newReq);
               }
-              requestor.addContainerReq(newReq);
+              requestor.addContainerReq(newReq.getContainerRequest());
             }
             else {
               LOG.info("Could not map allocated container to a valid request."
@@ -905,7 +906,7 @@ protected synchronized void handleEvent(AMSchedulerEvent sEvent) {
             assigned = assign(allocated);
             if (assigned != null) {
               // Update resource requests
-              requestor.decContainerReq(assigned);
+              requestor.decContainerReq(assigned.getContainerRequest());
 
               // TODO Maybe: ApplicationACLs should be populated into the appContext from the RMCommunicator.
               
@@ -913,16 +914,16 @@ protected synchronized void handleEvent(AMSchedulerEvent sEvent) {
               // TODO XXX: Launch only if not already running.
               // TODO XXX: Change this event to be more specific.
               if (appContext.getContainer(containerId).getState() == AMContainerState.ALLOCATED) {
-                eventHandler.handle(new AMContainerLaunchRequestEvent(containerId, attemptToLaunchRequestMap.get(assigned.attemptID), requestor.getApplicationAcls(), getJob().getID()));
+                eventHandler.handle(new AMContainerLaunchRequestEvent(containerId, attemptToLaunchRequestMap.get(assigned.getAttemptId()), requestor.getApplicationAcls(), getJob().getID()));
               }
-              eventHandler.handle(new AMContainerAssignTAEvent(containerId, assigned.attemptID, attemptToLaunchRequestMap.get(assigned.attemptID).getRemoteTask()));
+              eventHandler.handle(new AMContainerAssignTAEvent(containerId, assigned.getAttemptId(), attemptToLaunchRequestMap.get(assigned.getAttemptId()).getRemoteTask()));
               // TODO XXX: If re-using, get rid of one request.
 
-              assignedRequests.add(allocated, assigned.attemptID);
+              assignedRequests.add(allocated, assigned.getAttemptId());
 
               if (LOG.isDebugEnabled()) {
                 LOG.info("Assigned container (" + allocated + ") "
-                    + " to task " + assigned.attemptID + " on node "
+                    + " to task " + assigned.getAttemptId() + " on node "
                     + allocated.getNodeId().toString());
               }
             }
@@ -946,8 +947,8 @@ protected synchronized void handleEvent(AMSchedulerEvent sEvent) {
     
     // TODO XXX: Check whether the node is bad before an assign.
     
-    private ContainerRequest assign(Container allocated) {
-      ContainerRequest assigned = null;
+    private ContainerRequestInfo assign(Container allocated) {
+      ContainerRequestInfo assigned = null;
       
       Priority priority = allocated.getPriority();
       if (PRIORITY_FAST_FAIL_MAP.equals(priority)) {
@@ -971,10 +972,10 @@ protected synchronized void handleEvent(AMSchedulerEvent sEvent) {
       return assigned;
     }
     
-    private ContainerRequest getContainerReqToReplace(Container allocated) {
+    private ContainerRequestInfo getContainerReqToReplace(Container allocated) {
       LOG.info("Finding containerReq for allocated container: " + allocated);
       Priority priority = allocated.getPriority();
-      ContainerRequest toBeReplaced = null;
+      ContainerRequestInfo toBeReplaced = null;
       if (PRIORITY_FAST_FAIL_MAP.equals(priority)) {
         LOG.info("Replacing FAST_FAIL_MAP container " + allocated.getId());
         Iterator<TaskAttemptId> iter = earlierFailedMaps.iterator();
@@ -1010,15 +1011,15 @@ protected synchronized void handleEvent(AMSchedulerEvent sEvent) {
     
     
     @SuppressWarnings("unchecked")
-    private ContainerRequest assignToFailedMap(Container allocated) {
+    private ContainerRequestInfo assignToFailedMap(Container allocated) {
       //try to assign to earlierFailedMaps if present
-      ContainerRequest assigned = null;
+      ContainerRequestInfo assigned = null;
       while (assigned == null && earlierFailedMaps.size() > 0) {
         TaskAttemptId tId = earlierFailedMaps.removeFirst();      
         if (maps.containsKey(tId)) {
           assigned = maps.remove(tId);
           JobCounterUpdateEvent jce =
-            new JobCounterUpdateEvent(assigned.attemptID.getTaskId().getJobId());
+            new JobCounterUpdateEvent(assigned.getAttemptId().getTaskId().getJobId());
           jce.addCounterUpdate(JobCounter.OTHER_LOCAL_MAPS, 1);
           eventHandler.handle(jce);
           LOG.info("Assigned from earlierFailedMaps");
@@ -1028,8 +1029,8 @@ protected synchronized void handleEvent(AMSchedulerEvent sEvent) {
       return assigned;
     }
     
-    private ContainerRequest assignToReduce(Container allocated) {
-      ContainerRequest assigned = null;
+    private ContainerRequestInfo assignToReduce(Container allocated) {
+      ContainerRequestInfo assigned = null;
       //try to assign to reduces if present
       if (assigned == null && reduces.size() > 0) {
         TaskAttemptId tId = reduces.keySet().iterator().next();
@@ -1040,10 +1041,10 @@ protected synchronized void handleEvent(AMSchedulerEvent sEvent) {
     }
     
     @SuppressWarnings("unchecked")
-    private ContainerRequest assignToMap(Container allocated) {
+    private ContainerRequestInfo assignToMap(Container allocated) {
     //try to assign to maps if present 
       //first by host, then by rack, followed by *
-      ContainerRequest assigned = null;
+      ContainerRequestInfo assigned = null;
       while (assigned == null && maps.size() > 0) {
         String host = allocated.getNodeId().getHost();
         LinkedList<TaskAttemptId> list = mapsHostMapping.get(host);
@@ -1172,28 +1173,39 @@ protected synchronized void handleEvent(AMSchedulerEvent sEvent) {
       return containerId;
     }
   }
-  
-  protected ContainerRequest getFilteredContainerRequest(ContainerRequest orig) {
+
+  protected ContainerRequestInfo getFilteredContainerRequest(
+      ContainerRequestInfo origRequestInfo) {
+    ContainerRequest orig = origRequestInfo.getContainerRequest();
     ArrayList<String> newHosts = new ArrayList<String>();
     for (String host : orig.hosts) {
-      if (!appContext.getAllNodes().isHostBlackListed(host)) { 
-        newHosts.add(host);      
+      if (!appContext.getAllNodes().isHostBlackListed(host)) {
+        newHosts.add(host);
       }
     }
     String[] hosts = newHosts.toArray(new String[newHosts.size()]);
-    ContainerRequest newReq = new ContainerRequest(orig.attemptID, orig.capability,
-        hosts, orig.racks, orig.priority); 
+    ContainerRequestInfo newReq = new ContainerRequestInfo(
+        new ContainerRequest(orig.capability, hosts, orig.racks, orig.priority),
+        origRequestInfo.launchRequestEvent);
     return newReq;
   }
-  
-//  private static class ContainerRequestInfo {
-//    ContainerRequestInfo(ContainerRequest containerRequest,
-//        TaskAttemptId taskAttemptId) {
-//      this.containerRequest = containerRequest;
-//      this.taskAttemptId = taskAttemptId;
-//    }
-//
-//    ContainerRequest containerRequest;
-//    TaskAttemptId taskAttemptId;
-//  }
+
+  private static class ContainerRequestInfo {
+    ContainerRequestInfo(ContainerRequest containerRequest,
+        AMSchedulerTALaunchRequestEvent launchRequestEvent) {
+      this.containerRequest = containerRequest;
+      this.launchRequestEvent = launchRequestEvent;
+    }
+
+    ContainerRequest containerRequest;
+    AMSchedulerTALaunchRequestEvent launchRequestEvent;
+
+    TaskAttemptId getAttemptId() {
+      return launchRequestEvent.getAttemptID();
+    }
+
+    ContainerRequest getContainerRequest() {
+      return this.containerRequest;
+    }
+  }
 }
