@@ -66,7 +66,7 @@ import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptEventType;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskEventType;
 import org.apache.hadoop.mapreduce.v2.app2.job.impl.JobImpl;
-import org.apache.hadoop.mapreduce.v2.app2.launcher.ContainerLauncher;
+import org.apache.hadoop.mapreduce.v2.app2.launcher.NMCommunicator;
 import org.apache.hadoop.mapreduce.v2.app2.launcher.ContainerLauncherImpl;
 import org.apache.hadoop.mapreduce.v2.app2.metrics.MRAppMetrics;
 import org.apache.hadoop.mapreduce.v2.app2.recover.Recovery;
@@ -160,7 +160,7 @@ public class MRAppMaster extends CompositeService {
   private Dispatcher dispatcher;
   private ClientService clientService;
   private Recovery recoveryServ;
-  private ContainerLauncher containerLauncher;
+  private NMCommunicator nmCommunicator;
   private TaskCleaner taskCleaner;
   private Speculator speculator;
   private ContainerHeartbeatHandler containerHeartbeatHandler;
@@ -326,11 +326,10 @@ public class MRAppMaster extends CompositeService {
     // TODO XXX: initialization of RMComm, Scheduler, etc.
     
         
-    // TODO XXX: Rename to NMComm
     // corresponding service to launch allocated containers via NodeManager
-    containerLauncher = createNMCommunicator(context);
-    addIfService(containerLauncher);
-    dispatcher.register(NMCommunicatorEventType.class, containerLauncher);
+    nmCommunicator = createNMCommunicator(context);
+    addIfService(nmCommunicator);
+    dispatcher.register(NMCommunicatorEventType.class, nmCommunicator);
 
     // Add the staging directory cleaner before the history server but after
     // the container allocator so the staging directory is cleaned after
@@ -628,12 +627,12 @@ public class MRAppMaster extends CompositeService {
 //    return new ContainerAllocatorRouter(clientService, context);
 //  }
 
-  protected ContainerLauncher
+  protected NMCommunicator
       createContainerLauncher(final AppContext context) {
     return new ContainerLauncherRouter(context);
   }
   
-  protected ContainerLauncher createNMCommunicator(final AppContext context) {
+  protected NMCommunicator createNMCommunicator(final AppContext context) {
     return new ContainerLauncherImpl(context);
   }
 
@@ -686,8 +685,8 @@ public class MRAppMaster extends CompositeService {
 //    return containerAllocator;
 //  }
   
-  public ContainerLauncher getContainerLauncher() {
-    return containerLauncher;
+  public NMCommunicator getNMCommunicator() {
+    return nmCommunicator;
   }
 
   public TaskAttemptListener getTaskAttemptListener() {
@@ -749,9 +748,9 @@ public class MRAppMaster extends CompositeService {
    * happened.
    */
   private final class ContainerLauncherRouter extends AbstractService
-      implements ContainerLauncher {
+      implements NMCommunicator {
     private final AppContext context;
-    private ContainerLauncher containerLauncher;
+    private NMCommunicator containerLauncher;
 
     ContainerLauncherRouter(AppContext context) {
       super(ContainerLauncherRouter.class.getName());

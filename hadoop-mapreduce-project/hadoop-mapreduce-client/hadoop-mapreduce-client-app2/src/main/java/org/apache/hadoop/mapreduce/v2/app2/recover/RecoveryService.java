@@ -61,7 +61,7 @@ import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskEventType;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskTAttemptEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptStatusUpdateEvent.TaskAttemptStatus;
-import org.apache.hadoop.mapreduce.v2.app2.launcher.ContainerLauncher;
+import org.apache.hadoop.mapreduce.v2.app2.launcher.NMCommunicator;
 import org.apache.hadoop.mapreduce.v2.app2.launcher.ContainerLauncherEvent;
 import org.apache.hadoop.mapreduce.v2.app2.launcher.ContainerRemoteLaunchEvent;
 import org.apache.hadoop.mapreduce.v2.app2.rm.ContainerAllocator;
@@ -339,7 +339,7 @@ public class RecoveryService extends CompositeService implements Recovery {
         return;
       }
 
-      else if (event.getType() == ContainerLauncher.EventType.CONTAINER_REMOTE_LAUNCH) {
+      else if (event.getType() == NMCommunicator.EventType.CONTAINER_REMOTE_LAUNCH) {
         TaskAttemptId aId = ((ContainerRemoteLaunchEvent) event)
             .getTaskAttemptID();
         TaskAttemptInfo attInfo = getTaskAttemptInfo(aId);
@@ -393,7 +393,7 @@ public class RecoveryService extends CompositeService implements Recovery {
       }
 
       else if (event.getType() == 
-        ContainerLauncher.EventType.CONTAINER_REMOTE_CLEANUP) {
+        NMCommunicator.EventType.CONTAINER_REMOTE_CLEANUP) {
         TaskAttemptId aId = ((ContainerLauncherEvent) event)
           .getTaskAttemptID();
         actualHandler.handle(

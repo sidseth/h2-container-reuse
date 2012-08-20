@@ -27,7 +27,7 @@ import org.apache.hadoop.mapreduce.v2.api.records.JobState;
 import org.apache.hadoop.mapreduce.v2.app2.AppContext;
 import org.apache.hadoop.mapreduce.v2.app2.MRApp;
 import org.apache.hadoop.mapreduce.v2.app2.job.Job;
-import org.apache.hadoop.mapreduce.v2.app2.launcher.ContainerLauncher;
+import org.apache.hadoop.mapreduce.v2.app2.launcher.NMCommunicator;
 import org.apache.hadoop.mapreduce.v2.app2.launcher.ContainerLauncherEvent;
 import org.apache.hadoop.mapreduce.v2.app2.launcher.ContainerRemoteLaunchEvent;
 import org.apache.hadoop.yarn.api.records.ContainerLaunchContext;
@@ -72,7 +72,7 @@ public class TestMapReduceChildJVM {
     }
 
     @Override
-    protected ContainerLauncher createContainerLauncher(AppContext context) {
+    protected NMCommunicator createContainerLauncher(AppContext context) {
       return new MockContainerLauncher() {
         @Override
         public void handle(ContainerLauncherEvent event) {

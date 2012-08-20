@@ -72,7 +72,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
  * This class is responsible for launching of containers.
  */
 public class ContainerLauncherImpl extends AbstractService implements
-    ContainerLauncher {
+    NMCommunicator {
 
   // TODO XXX Ensure the same thread is used to launch / stop the same container. Or - ensure event ordering.
   static final Log LOG = LogFactory.getLog(ContainerLauncherImpl.class);

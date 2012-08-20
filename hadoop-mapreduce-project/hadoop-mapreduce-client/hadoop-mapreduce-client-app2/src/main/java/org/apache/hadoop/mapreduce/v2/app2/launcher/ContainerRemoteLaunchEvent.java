@@ -34,7 +34,7 @@ public class ContainerRemoteLaunchEvent extends ContainerLauncherEvent {
       ContainerToken containerToken,
       ContainerLaunchContext containerLaunchContext, Task remoteTask) {
     super(taskAttemptID, containerID, containerMgrAddress, containerToken,
-        ContainerLauncher.EventType.CONTAINER_REMOTE_LAUNCH);
+        NMCommunicator.EventType.CONTAINER_REMOTE_LAUNCH);
     this.container = containerLaunchContext;
     this.task = remoteTask;
   }

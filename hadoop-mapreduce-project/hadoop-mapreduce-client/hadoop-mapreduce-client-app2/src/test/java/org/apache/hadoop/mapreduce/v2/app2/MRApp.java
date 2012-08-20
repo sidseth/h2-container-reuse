@@ -64,7 +64,7 @@ import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptContainerLaunche
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptEventType;
 import org.apache.hadoop.mapreduce.v2.app2.job.impl.JobImpl;
-import org.apache.hadoop.mapreduce.v2.app2.launcher.ContainerLauncher;
+import org.apache.hadoop.mapreduce.v2.app2.launcher.NMCommunicator;
 import org.apache.hadoop.mapreduce.v2.app2.launcher.ContainerLauncherEvent;
 import org.apache.hadoop.mapreduce.v2.app2.rm.ContainerAllocator;
 import org.apache.hadoop.mapreduce.v2.app2.rm.ContainerAllocatorEvent;
@@ -396,11 +396,11 @@ public class MRApp extends MRAppMaster {
   }
   
   @Override
-  protected ContainerLauncher createContainerLauncher(AppContext context) {
+  protected NMCommunicator createContainerLauncher(AppContext context) {
     return new MockContainerLauncher();
   }
 
-  protected class MockContainerLauncher implements ContainerLauncher {
+  protected class MockContainerLauncher implements NMCommunicator {
 
     //We are running locally so set the shuffle port to -1 
     int shufflePort = -1;

@@ -53,7 +53,7 @@ import org.apache.hadoop.mapreduce.v2.app2.job.Task;
 import org.apache.hadoop.mapreduce.v2.app2.job.TaskAttempt;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptEventType;
-import org.apache.hadoop.mapreduce.v2.app2.launcher.ContainerLauncher;
+import org.apache.hadoop.mapreduce.v2.app2.launcher.NMCommunicator;
 import org.apache.hadoop.mapreduce.v2.app2.launcher.ContainerLauncherEvent;
 import org.apache.hadoop.util.ReflectionUtils;
 import org.apache.hadoop.yarn.event.EventHandler;
@@ -721,7 +721,7 @@ public class TestRecovery {
     }
 
     @Override
-    protected ContainerLauncher createContainerLauncher(AppContext context) {
+    protected NMCommunicator createContainerLauncher(AppContext context) {
       MockContainerLauncher launcher = new MockContainerLauncher() {
         @Override
         public void handle(ContainerLauncherEvent event) {
