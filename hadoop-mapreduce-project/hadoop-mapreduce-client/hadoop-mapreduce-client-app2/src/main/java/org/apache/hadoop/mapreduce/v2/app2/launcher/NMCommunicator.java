@@ -22,7 +22,7 @@ package org.apache.hadoop.mapreduce.v2.app2.launcher;
 import org.apache.hadoop.mapreduce.v2.app2.rm.NMCommunicatorEvent;
 import org.apache.hadoop.yarn.event.EventHandler;
 
-public interface ContainerLauncher 
+public interface NMCommunicator 
     extends EventHandler<NMCommunicatorEvent> {
 
   enum EventType {
