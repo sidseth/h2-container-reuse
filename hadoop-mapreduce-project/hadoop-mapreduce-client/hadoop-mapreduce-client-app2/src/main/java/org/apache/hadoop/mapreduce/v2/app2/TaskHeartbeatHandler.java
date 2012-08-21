@@ -89,12 +89,17 @@ public class TaskHeartbeatHandler extends AbstractService {
   
   private ConcurrentMap<TaskAttemptId, ReportTime> runningAttempts;
 
+  public TaskHeartbeatHandler(AppContext context) {
+    this(context, 16);
+  }
+  
   public TaskHeartbeatHandler(AppContext context,
       int numThreads) {
     super("TaskHeartbeatHandler");
     this.eventHandler = context.getEventHandler();
     this.clock = context.getClock();
     this.context = context;
+    numThreads = numThreads <= 0 ? 1 : numThreads;
     runningAttempts =
       new ConcurrentHashMap<TaskAttemptId, ReportTime>(16, 0.75f, numThreads);
   }

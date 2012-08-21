@@ -25,9 +25,9 @@ import org.apache.hadoop.yarn.event.EventHandler;
 public interface ContainerLauncher 
     extends EventHandler<NMCommunicatorEvent> {
 
-  enum EventType {
-    CONTAINER_REMOTE_LAUNCH,
-    CONTAINER_REMOTE_CLEANUP
-  }
+//  enum EventType {
+//    CONTAINER_REMOTE_LAUNCH,
+//    CONTAINER_REMOTE_CLEANUP
+//  }
 
 }

@@ -34,6 +34,7 @@ import org.apache.hadoop.mapreduce.security.token.JobTokenIdentifier;
 import org.apache.hadoop.mapreduce.v2.api.records.TaskAttemptId;
 import org.apache.hadoop.mapreduce.v2.app2.AppContext;
 import org.apache.hadoop.mapreduce.v2.app2.TaskAttemptListener;
+import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptDiagnosticsUpdateEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptEventKillRequest;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptEventTerminated;
@@ -495,6 +496,7 @@ public class AMContainerImpl implements AMContainer {
           LOG.info("Computing idle time for container: " + container.getContainerId() + ", lastFinishTime: " + container.lastTaskFinishTime + ", Incremented by: " + idleTimeDiff);
           container.idleTimeBetweenTasks += System.currentTimeMillis() - container.lastTaskFinishTime;
         }
+        LOG.info("XXX: Assigned task + [" + container.runningAttempt + "] to container: [" + container.getContainerId() + "]");
         return AMContainerState.RUNNING;
         // TODO XXX: Make sure the TAL sends out a TA_STARTED_REMOTELY, along with the shuffle port.
       } else {
@@ -508,9 +510,16 @@ public class AMContainerImpl implements AMContainer {
     return new LaunchFailed();
   }
 
-  protected static class LaunchFailed implements SingleArcTransition<AMContainerImpl, AMContainerEvent> {
+  protected static class LaunchFailed implements
+      SingleArcTransition<AMContainerImpl, AMContainerEvent> {
     @Override
     public void transition(AMContainerImpl container, AMContainerEvent cEvent) {
+      // TODO XXX: Send diagnostics to pending task attempt. Update action in transition table.
+      if (container.pendingAttempt != null) {
+        AMContainerEventLaunchFailed event = (AMContainerEventLaunchFailed) cEvent;
+        container.sendEvent(new TaskAttemptDiagnosticsUpdateEvent(
+            container.pendingAttempt, event.getMessage()));
+      }
       container.deAllocate();
     }
   }

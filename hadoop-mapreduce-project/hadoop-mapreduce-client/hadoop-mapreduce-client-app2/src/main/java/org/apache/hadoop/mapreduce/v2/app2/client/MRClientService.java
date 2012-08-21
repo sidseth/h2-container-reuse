@@ -319,7 +319,7 @@ public class MRClientService extends AbstractService
           new TaskAttemptDiagnosticsUpdateEvent(taskAttemptId, message));
       appContext.getEventHandler().handle(
           new TaskAttemptEvent(taskAttemptId, 
-              TaskAttemptEventType.TA_KILL));
+              TaskAttemptEventType.TA_KILL_REQUEST));
       KillTaskAttemptResponse response = 
         recordFactory.newRecordInstance(KillTaskAttemptResponse.class);
       return response;

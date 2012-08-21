@@ -121,6 +121,11 @@ import org.apache.hadoop.yarn.state.StateMachineFactory;
 public class JobImpl implements org.apache.hadoop.mapreduce.v2.app2.job.Job, 
   EventHandler<JobEvent> {
 
+  // TODO XXX: Events will be processed after a job completes. Check what
+  // additional Job/Task states will need to handle this (earlier assumption
+  // being JOB_COMPLETE means no more events). e.g. JOB_TASK_COMPLETE
+  // can arrive after a Job has failed due to previous TaskAttempt failures.
+  
   private static final TaskAttemptCompletionEvent[]
     EMPTY_TASK_ATTEMPT_COMPLETION_EVENTS = new TaskAttemptCompletionEvent[0];
 
@@ -331,7 +336,9 @@ public class JobImpl implements org.apache.hadoop.mapreduce.v2.app2.job.Job,
           .addTransition(JobState.SUCCEEDED, JobState.SUCCEEDED,
               EnumSet.of(JobEventType.JOB_KILL, 
                   JobEventType.JOB_UPDATED_NODES,
-                  JobEventType.JOB_TASK_ATTEMPT_FETCH_FAILURE))
+                  JobEventType.JOB_TASK_ATTEMPT_FETCH_FAILURE,
+                  JobEventType.JOB_TASK_ATTEMPT_COMPLETED,
+                  JobEventType.JOB_TASK_COMPLETED))
 
           // Transitions from FAILED state
           .addTransition(JobState.FAILED, JobState.FAILED,
@@ -347,7 +354,9 @@ public class JobImpl implements org.apache.hadoop.mapreduce.v2.app2.job.Job,
           .addTransition(JobState.FAILED, JobState.FAILED,
               EnumSet.of(JobEventType.JOB_KILL, 
                   JobEventType.JOB_UPDATED_NODES,
-                  JobEventType.JOB_TASK_ATTEMPT_FETCH_FAILURE))
+                  JobEventType.JOB_TASK_ATTEMPT_FETCH_FAILURE,
+                  JobEventType.JOB_TASK_ATTEMPT_COMPLETED,
+                  JobEventType.JOB_TASK_COMPLETED))
 
           // Transitions from KILLED state
           .addTransition(JobState.KILLED, JobState.KILLED,
@@ -363,7 +372,9 @@ public class JobImpl implements org.apache.hadoop.mapreduce.v2.app2.job.Job,
           .addTransition(JobState.KILLED, JobState.KILLED,
               EnumSet.of(JobEventType.JOB_KILL, 
                   JobEventType.JOB_UPDATED_NODES,
-                  JobEventType.JOB_TASK_ATTEMPT_FETCH_FAILURE))
+                  JobEventType.JOB_TASK_ATTEMPT_FETCH_FAILURE,
+                  JobEventType.JOB_TASK_ATTEMPT_COMPLETED,
+                  JobEventType.JOB_TASK_COMPLETED))
 
           // No transitions from INTERNAL_ERROR state. Ignore all.
           .addTransition(
@@ -696,6 +707,7 @@ public class JobImpl implements org.apache.hadoop.mapreduce.v2.app2.job.Job,
    */
   public void handle(JobEvent event) {
     LOG.debug("Processing " + event.getJobId() + " of type " + event.getType());
+    LOG.info("XXX: Processing " + event.getJobId() + " of type " + event.getType() + " while in state: " + getState());
     try {
       writeLock.lock();
       JobState oldState = getState();

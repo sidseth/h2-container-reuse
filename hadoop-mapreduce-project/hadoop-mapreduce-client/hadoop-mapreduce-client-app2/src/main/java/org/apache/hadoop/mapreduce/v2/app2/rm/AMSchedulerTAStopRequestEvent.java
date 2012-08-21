@@ -4,6 +4,7 @@ import org.apache.hadoop.mapreduce.v2.api.records.TaskAttemptId;
 
 public class AMSchedulerTAStopRequestEvent extends AMSchedulerEvent {
 
+  // TODO XXX: Maybe include the ContainerId along with this -> for TOO_MANY_FETCH_FAILURES.
   private final TaskAttemptId attemptId;
   private final boolean failed;
 

@@ -70,8 +70,8 @@ import org.apache.hadoop.mapreduce.v2.app2.launcher.ContainerLauncher;
 import org.apache.hadoop.mapreduce.v2.app2.launcher.ContainerLauncherImpl;
 import org.apache.hadoop.mapreduce.v2.app2.metrics.MRAppMetrics;
 import org.apache.hadoop.mapreduce.v2.app2.recover.Recovery;
-import org.apache.hadoop.mapreduce.v2.app2.recover.RecoveryService;
 import org.apache.hadoop.mapreduce.v2.app2.rm.AMSchedulerEventType;
+import org.apache.hadoop.mapreduce.v2.app2.rm.ContainerAllocator;
 import org.apache.hadoop.mapreduce.v2.app2.rm.NMCommunicatorEvent;
 import org.apache.hadoop.mapreduce.v2.app2.rm.NMCommunicatorEventType;
 import org.apache.hadoop.mapreduce.v2.app2.rm.RMCommunicatorEventType;
@@ -80,6 +80,7 @@ import org.apache.hadoop.mapreduce.v2.app2.rm.RMContainerRequestor;
 import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainer;
 import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainerEventType;
 import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainerMap;
+import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainerState;
 import org.apache.hadoop.mapreduce.v2.app2.rm.node.AMNode;
 import org.apache.hadoop.mapreduce.v2.app2.rm.node.AMNodeEventType;
 import org.apache.hadoop.mapreduce.v2.app2.rm.node.AMNodeMap;
@@ -176,7 +177,7 @@ public class MRAppMaster extends CompositeService {
   private boolean inRecovery = false;
   private SpeculatorEventDispatcher speculatorEventDispatcher;
   private RMContainerRequestor rmContainerRequestor;
-  private RMContainerAllocator amScheduler;
+  private ContainerAllocator amScheduler;
   
 
   private Job job;
@@ -310,12 +311,12 @@ public class MRAppMaster extends CompositeService {
         speculatorEventDispatcher);
 
     // service to allocate containers from RM (if non-uber) or to fake it (uber)
-    rmContainerRequestor = new RMContainerRequestor(clientService, context, clock);
+    rmContainerRequestor = createRMContainerRequestor(clientService, context);
     addIfService(rmContainerRequestor);
     dispatcher.register(RMCommunicatorEventType.class, rmContainerRequestor);
     
     // TODO XXX: Get rid of eventHandlers being sent as part of the constructors. context should be adequate.
-    amScheduler = new RMContainerAllocator(rmContainerRequestor, context, clock, dispatcher.getEventHandler());
+    amScheduler = createAMScheduler(rmContainerRequestor, context);
     addIfService(amScheduler);
     dispatcher.register(AMSchedulerEventType.class, amScheduler);
     
@@ -328,7 +329,8 @@ public class MRAppMaster extends CompositeService {
         
     // TODO XXX: Rename to NMComm
     // corresponding service to launch allocated containers via NodeManager
-    containerLauncher = createNMCommunicator(context);
+//    containerLauncher = createNMCommunicator(context);
+    containerLauncher = createContainerLauncher(context);
     addIfService(containerLauncher);
     dispatcher.register(NMCommunicatorEventType.class, containerLauncher);
 
@@ -428,6 +430,96 @@ public class MRAppMaster extends CompositeService {
   protected void sysexit() {
     System.exit(0);
   }
+  protected class JobFinishEventHandlerCR implements EventHandler<JobFinishEvent> {
+    // Considering TaskAttempts are marked as completed before a container exit,
+    // it's very likely that a Container may not have "completed" by the time a
+    // job completes. This would imply that TaskAtetmpts may not be at a FINAL
+    // internal state (state machine state), and cleanup would not have happened.
+    
+    // Since the shutdown handler has been called in the same thread which
+    // is handling all other async events, creating a separate thread for shutdown.
+    //
+    // For now, checking to see if all containers have COMPLETED, with a 5
+    // second timeout before the exit.
+    // TODO XXX: Modify TaskAttemptCleaner to empty it's queue while stopping.
+    public void handle(JobFinishEvent event) {
+      AMShutdownRunnable r = new AMShutdownRunnable();
+      Thread t = new Thread(r, "AMShutdownThread");
+      t.start();
+    }
+    
+    protected void maybeSendJobEndNotification() {
+      if (getConfig().get(MRJobConfig.MR_JOB_END_NOTIFICATION_URL) != null) {
+        try {
+          LOG.info("Job end notification started for jobID : "
+              + job.getReport().getJobId());
+          JobEndNotifier notifier = new JobEndNotifier();
+          notifier.setConf(getConfig());
+          notifier.notify(job.getReport());
+        } catch (InterruptedException ie) {
+          LOG.warn("Job end notification interrupted for jobID : "
+              + job.getReport().getJobId(), ie);
+        }
+      }
+    }
+    
+    protected void stopAllServices() {
+      try {
+        // Stop all services
+        // This will also send the final report to the ResourceManager
+        LOG.info("Calling stop for all the services");
+        stop();
+
+      } catch (Throwable t) {
+        LOG.warn("Graceful stop failed ", t);
+      }
+    }
+    
+    protected void exit() {
+      LOG.info("Exiting MR AppMaster..GoodBye!");
+      sysexit();
+    }
+    
+    private void stopAM() {
+      stopAllServices();
+      exit();
+    }
+    
+    protected boolean allContainersComplete() {
+      for (AMContainer amContainer : context.getAllContainers().values()) {
+        if (amContainer.getState() != AMContainerState.COMPLETED) {
+          return false;
+        }
+      }
+      return true;
+    }
+    
+    protected boolean allTaskAttemptsComplete() {
+      // TODO XXX: Implement.
+      // TaskAttempts will transition to their final state machine state only
+      // after a container is complete and sends out a TA_TERMINATED event.
+      return true;
+    }
+
+    private class AMShutdownRunnable implements Runnable {
+      @Override
+      public void run() {
+        maybeSendJobEndNotification();
+        while (!allContainersComplete() || !allTaskAttemptsComplete()) {
+          try {
+            synchronized(this) {
+              wait(100l);
+            }
+          } catch (InterruptedException e) {
+            LOG.info("AM Shutdown Thread interrupted. Exiting");
+            break;
+          }
+        }
+        stopAM();
+        LOG.info("AM Shutdown Thread Completing");
+      }
+    }
+  }
   
   private class JobFinishEventHandler implements EventHandler<JobFinishEvent> {
     @Override
@@ -488,8 +580,32 @@ public class MRAppMaster extends CompositeService {
    * @return an instance of the recovery service.
    */
   protected Recovery createRecoveryService(AppContext appContext) {
-    return new RecoveryService(appContext.getApplicationAttemptId(),
-        appContext.getClock(), getCommitter());
+//    return new RecoveryService(appContext.getApplicationAttemptId(),
+//        appContext.getClock(), getCommitter());
+    // TODO XXX Uncomment after fixing RecoveryService
+    return null;
+  }
+  
+  /**
+   * Create the RMContainerRequestor.
+   * @param clientService the MR Client Service.
+   * @param appContext the application context.
+   * @return an instance of the RMContainerRequestor.
+   */
+  protected RMContainerRequestor createRMContainerRequestor(
+      ClientService clientService, AppContext appContext) {
+    return new RMContainerRequestor(clientService, appContext);
+  }
+  
+  /**
+   * Create the AM Scheduler.
+   * @param requestor The RM Container Requestor.
+   * @param appContext the application context.
+   * @return an instance of the AMScheduler.
+   */
+  protected ContainerAllocator createAMScheduler(
+      RMContainerRequestor requestor, AppContext appContext) {
+    return new RMContainerAllocator(requestor, appContext);
   }
 
   /** Create and initialize (but don't start) a single job. */
@@ -633,9 +749,9 @@ public class MRAppMaster extends CompositeService {
     return new ContainerLauncherRouter(context);
   }
   
-  protected ContainerLauncher createNMCommunicator(final AppContext context) {
-    return new ContainerLauncherImpl(context);
-  }
+//  protected ContainerLauncher createNMCommunicator(final AppContext context) {
+//    return new ContainerLauncherImpl(context);
+//  }
 
   //TODO:should have an interface for MRClientService
   protected ClientService createClientService(AppContext context) {
@@ -692,6 +808,10 @@ public class MRAppMaster extends CompositeService {
 
   public TaskAttemptListener getTaskAttemptListener() {
     return taskAttemptListener;
+  }
+  
+  public TaskHeartbeatHandler getTaskHeartbeatHandler() {
+    return taskHeartbeatHandler;
   }
 
   /**

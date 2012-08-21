@@ -101,9 +101,11 @@ public class RMContainerRequestor extends RMCommunicator implements EventHandler
   
   // TODO XXX Consider allowing sync comm between the requestor and allocator... 
   
-  public RMContainerRequestor(ClientService clientService, AppContext context, Clock clock) {
+  // TODO XXX: Why does the RMRequestor require the ClientService ??
+  // TODO XXX: Get rid of the clock. Available from the context.
+  public RMContainerRequestor(ClientService clientService, AppContext context) {
     super(clientService, context);
-    this.clock = clock;
+    this.clock = context.getClock();
   }
   
   public static class ContainerRequest {
@@ -114,10 +116,6 @@ public class RMContainerRequestor extends RMCommunicator implements EventHandler
 
     public ContainerRequest(AMSchedulerTALaunchRequestEvent event,
         Priority priority) {
-      this(event.getCapability(), event.getHosts(), event.getRacks(), priority);
-    }
-
-    public ContainerRequest(ContainerRequestEvent event, Priority priority) {
       this(event.getCapability(), event.getHosts(), event.getRacks(), priority);
     }
 

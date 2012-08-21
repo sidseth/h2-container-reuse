@@ -20,13 +20,14 @@ package org.apache.hadoop.mapreduce.v2.app2.rm;
 
 import org.apache.hadoop.yarn.event.EventHandler;
 
-public interface ContainerAllocator extends EventHandler<ContainerAllocatorEvent>{
+// TODO XXX Rename to AMScheduler.
+public interface ContainerAllocator extends EventHandler<AMSchedulerEvent>{
 
-  enum EventType {
-
-    CONTAINER_REQ,
-    CONTAINER_DEALLOCATE,
-    CONTAINER_FAILED
-  }
+//  enum EventType {
+//
+//    CONTAINER_REQ,
+//    CONTAINER_DEALLOCATE,
+//    CONTAINER_FAILED
+//  }
 
 }

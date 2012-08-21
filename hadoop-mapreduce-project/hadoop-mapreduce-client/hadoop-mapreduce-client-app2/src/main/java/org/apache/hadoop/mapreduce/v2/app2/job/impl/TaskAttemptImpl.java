@@ -58,7 +58,7 @@ import org.apache.hadoop.mapreduce.v2.app2.rm.AMSchedulerTALaunchRequestEvent;
 import org.apache.hadoop.mapreduce.v2.app2.rm.AMSchedulerTAStopRequestEvent;
 import org.apache.hadoop.mapreduce.v2.app2.rm.AMSchedulerTASucceededEvent;
 import org.apache.hadoop.mapreduce.v2.app2.speculate.SpeculatorEvent;
-import org.apache.hadoop.mapreduce.v2.app2.taskclean.TaskAttemptCleanupEvent;
+import org.apache.hadoop.mapreduce.v2.app2.taskclean.TaskCleanupEvent;
 import org.apache.hadoop.mapreduce.v2.util.MRBuilderUtils;
 import org.apache.hadoop.net.NetUtils;
 import org.apache.hadoop.security.Credentials;
@@ -200,22 +200,7 @@ public abstract class TaskAttemptImpl implements TaskAttempt,
         
         .installTopology();
   }
-  
-  /*
-   * public MapTaskAttemptImpl(TaskId taskId, int attempt, 
-      EventHandler eventHandler, Path jobFile, 
-      int partition, TaskSplitMetaInfo splitInfo, JobConf conf,
-      TaskAttemptListener taskAttemptListener, 
-      OutputCommitter committer, Token<JobTokenIdentifier> jobToken,
-      Credentials credentials, Clock clock,
-      AppContext appContext) {
-    super(taskId, attempt, eventHandler, 
-        taskAttemptListener, jobFile, partition, conf, splitInfo.getLocations(),
-        committer, jobToken, credentials, clock, appContext);
-    this.splitInfo = splitInfo;
-  }
-   */
-  
+
   // TODO Remove TaskAttemptListener from the constructor.
   @SuppressWarnings("rawtypes")
   public TaskAttemptImpl(TaskId taskId, int i, EventHandler eventHandler,
@@ -244,6 +229,7 @@ public abstract class TaskAttemptImpl implements TaskAttempt,
     this.resourceCapability = BuilderUtils.newResource(getMemoryRequired(conf,
         taskId.getTaskType()));
     this.reportedStatus = new TaskAttemptStatus();
+    RackResolver.init(conf);
     synchronized(stateMachineFactory) {
       if (!stateMachineInited) {
         LOG.info("XXX: Initializing State Machine Factory");
@@ -738,8 +724,7 @@ public abstract class TaskAttemptImpl implements TaskAttempt,
   private void sendTaskAttemptCleanupEvent() {
     TaskAttemptContext taContext = new TaskAttemptContextImpl(this.conf,
         TypeConverter.fromYarn(this.attemptId));
-    sendEvent(new TaskAttemptCleanupEvent(this.attemptId, this.containerId,
-        this.committer, taContext));
+    sendEvent(new TaskCleanupEvent(this.attemptId, this.committer, taContext));
   }
 
   protected SingleArcTransition<TaskAttemptImpl, TaskAttemptEvent> 
@@ -935,7 +920,7 @@ public abstract class TaskAttemptImpl implements TaskAttempt,
       // Inform the Task
       ta.sendEvent(new TaskTAttemptEvent(ta.attemptId,
           TaskEventType.T_ATTEMPT_LAUNCHED));
-      
+
       ta.taskHeartbeatHandler.register(ta.attemptId);
     }
   }

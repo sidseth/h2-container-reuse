@@ -433,29 +433,31 @@ public class MRApp extends MRAppMaster {
 
   protected class MRAppContainerAllocator implements ContainerAllocator {
     private int containerCount;
+    private boolean normalizeEventGenerated = false;
 
-     @Override
-      public void handle(ContainerAllocatorEvent event) {
-        ContainerId cId = recordFactory.newRecordInstance(ContainerId.class);
-        cId.setApplicationAttemptId(getContext().getApplicationAttemptId());
-        cId.setId(containerCount++);
-        NodeId nodeId = BuilderUtils.newNodeId(NM_HOST, NM_PORT);
-        Container container = BuilderUtils.newContainer(cId, nodeId,
-            NM_HOST + ":" + NM_HTTP_PORT, null, null, null);
-        JobID id = TypeConverter.fromYarn(applicationId);
-        JobId jobId = TypeConverter.toYarn(id);
-        getContext().getEventHandler().handle(new JobHistoryEvent(jobId, 
-            new NormalizedResourceEvent(
-                org.apache.hadoop.mapreduce.TaskType.REDUCE,
-            100)));
-        getContext().getEventHandler().handle(new JobHistoryEvent(jobId, 
-            new NormalizedResourceEvent(
-                org.apache.hadoop.mapreduce.TaskType.MAP,
-            100)));
+    @Override
+    public void handle(ContainerAllocatorEvent event) {
+      ContainerId cId = recordFactory.newRecordInstance(ContainerId.class);
+      cId.setApplicationAttemptId(getContext().getApplicationAttemptId());
+      cId.setId(containerCount++);
+      NodeId nodeId = BuilderUtils.newNodeId(NM_HOST, NM_PORT);
+      Container container = BuilderUtils.newContainer(cId, nodeId, NM_HOST
+          + ":" + NM_HTTP_PORT, null, null, null);
+      JobID id = TypeConverter.fromYarn(applicationId);
+      JobId jobId = TypeConverter.toYarn(id);
+      if (!normalizeEventGenerated) {
         getContext().getEventHandler().handle(
-            new TaskAttemptContainerAssignedEvent(event.getAttemptID(),
-                container, null));
+            new JobHistoryEvent(jobId, new NormalizedResourceEvent(
+                org.apache.hadoop.mapreduce.TaskType.REDUCE, 100)));
+        getContext().getEventHandler().handle(
+            new JobHistoryEvent(jobId, new NormalizedResourceEvent(
+                org.apache.hadoop.mapreduce.TaskType.MAP, 100)));
+        normalizeEventGenerated = true;
       }
+      getContext().getEventHandler().handle(
+          new TaskAttemptContainerAssignedEvent(event.getAttemptID(),
+              container, null));
+    }
   }
 
   @Override

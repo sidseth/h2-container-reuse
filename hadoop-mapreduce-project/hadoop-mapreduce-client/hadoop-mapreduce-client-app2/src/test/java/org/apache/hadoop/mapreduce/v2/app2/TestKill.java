@@ -36,9 +36,12 @@ import org.apache.hadoop.mapreduce.v2.app2.job.TaskAttempt;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.JobEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.JobEventType;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptEvent;
+import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptEventKillRequest;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptEventType;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskEventType;
+import org.apache.hadoop.yarn.api.records.ContainerId;
+import org.apache.hadoop.yarn.service.Service;
 import org.junit.Test;
 
 /**
@@ -68,6 +71,7 @@ public class TestKill {
 
     //wait and validate for Job to be KILLED
     app.waitForState(job, JobState.KILLED);
+    app.waitForState(Service.STATE.STOPPED);
     Map<TaskId,Task> tasks = job.getTasks();
     Assert.assertEquals("No of tasks is not correct", 1, 
         tasks.size());
@@ -81,6 +85,11 @@ public class TestKill {
     Iterator<TaskAttempt> it = attempts.values().iterator();
     Assert.assertEquals("Attempt state not correct", TaskAttemptState.KILLED, 
           it.next().getReport().getTaskAttemptState());
+
+    // XXX Will pass if using user facing states. Verify user facing as well as state machine states.
+    
+    // XXX 1. No PULL_REQUEST.
+    // XXX 2. No RELEASED.
   }
 
   @Test
@@ -153,8 +162,11 @@ public class TestKill {
     
     //send the kill signal to the first Task's attempt
     TaskAttempt attempt = task1.getAttempts().values().iterator().next();
-    app.getContext().getEventHandler().handle(
-          new TaskAttemptEvent(attempt.getID(), TaskAttemptEventType.TA_KILL));
+    app.getContext()
+        .getEventHandler()
+        .handle(
+            new TaskAttemptEventKillRequest(attempt.getID(),
+                "uni test kill request"));
     
     //unblock
     latch.countDown();

@@ -101,10 +101,15 @@ public class AsyncDispatcher extends AbstractService implements Dispatcher {
     stopped = true;
     if (eventHandlingThread != null) {
       eventHandlingThread.interrupt();
+      
       try {
         eventHandlingThread.join();
       } catch (InterruptedException ie) {
         LOG.warn("Interrupted Exception while stopping", ie);
+      }
+      LOG.info("XXX: Pending in queue");
+      for (Event event : eventQueue) {
+        LOG.info("XXX: " + event.getType());
       }
     }
 
@@ -119,6 +124,8 @@ public class AsyncDispatcher extends AbstractService implements Dispatcher {
       LOG.debug("Dispatching the event " + event.getClass().getName() + "."
           + event.toString());
     }
+    LOG.info("XXX: Dispatching the event " + event.getClass().getName() + "."
+        + event.toString());
 
     Class<? extends Enum> type = event.getType().getDeclaringClass();
 
@@ -178,6 +185,7 @@ public class AsyncDispatcher extends AbstractService implements Dispatcher {
             + remCapacity);
       }
       try {
+        LOG.info("XXX: Queueing type: " + event.getType());
         eventQueue.put(event);
       } catch (InterruptedException e) {
         LOG.warn("AsyncDispatcher thread interrupted", e);

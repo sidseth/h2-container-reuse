@@ -28,8 +28,9 @@ import org.apache.hadoop.mapreduce.v2.app2.AppContext;
 import org.apache.hadoop.mapreduce.v2.app2.MRApp;
 import org.apache.hadoop.mapreduce.v2.app2.job.Job;
 import org.apache.hadoop.mapreduce.v2.app2.launcher.ContainerLauncher;
-import org.apache.hadoop.mapreduce.v2.app2.launcher.ContainerLauncherEvent;
-import org.apache.hadoop.mapreduce.v2.app2.launcher.ContainerRemoteLaunchEvent;
+import org.apache.hadoop.mapreduce.v2.app2.rm.NMCommunicatorEvent;
+import org.apache.hadoop.mapreduce.v2.app2.rm.NMCommunicatorEventType;
+import org.apache.hadoop.mapreduce.v2.app2.rm.NMCommunicatorLaunchRequestEvent;
 import org.apache.hadoop.yarn.api.records.ContainerLaunchContext;
 import org.junit.Test;
 
@@ -45,6 +46,7 @@ public class TestMapReduceChildJVM {
     app.waitForState(job, JobState.SUCCEEDED);
     app.verifyCompleted();
 
+    // TODO XXX: Change classname after renaming back to YarnChild
     Assert.assertEquals(
       "[exec $JAVA_HOME/bin/java" +
       " -Djava.net.preferIPv4Stack=true" +
@@ -54,7 +56,7 @@ public class TestMapReduceChildJVM {
       " -Dyarn.app.mapreduce.container.log.dir=<LOG_DIR>" +
       " -Dyarn.app.mapreduce.container.log.filesize=0" +
       " -Dhadoop.root.logger=INFO,CLA" +
-      " org.apache.hadoop.mapred.YarnChild 127.0.0.1" +
+      " org.apache.hadoop.mapred.YarnChild2 127.0.0.1" +
       " 54321" +
       " attempt_0_0000_m_000000_0" +
       " 0" +
@@ -75,10 +77,10 @@ public class TestMapReduceChildJVM {
     protected ContainerLauncher createContainerLauncher(AppContext context) {
       return new MockContainerLauncher() {
         @Override
-        public void handle(ContainerLauncherEvent event) {
-          if (event.getType() == EventType.CONTAINER_REMOTE_LAUNCH) {
-            ContainerRemoteLaunchEvent launchEvent = (ContainerRemoteLaunchEvent) event;
-            ContainerLaunchContext launchContext = launchEvent.getContainer();
+        public void handle(NMCommunicatorEvent event) {
+          if (event.getType() == NMCommunicatorEventType.CONTAINER_LAUNCH_REQUEST) {
+            NMCommunicatorLaunchRequestEvent launchEvent = (NMCommunicatorLaunchRequestEvent) event;
+            ContainerLaunchContext launchContext = launchEvent.getContainerLaunchContext();
             String cmdString = launchContext.getCommands().toString();
             LOG.info("launchContext " + cmdString);
             myCommandLine = cmdString;

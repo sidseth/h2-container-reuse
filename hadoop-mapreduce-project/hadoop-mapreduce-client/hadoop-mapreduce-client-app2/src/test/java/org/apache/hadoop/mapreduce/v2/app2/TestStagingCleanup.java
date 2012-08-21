@@ -27,24 +27,18 @@ import static org.mockito.Mockito.when;
 import java.io.IOException;
 
 import junit.framework.Assert;
-import junit.framework.TestCase;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.mapreduce.MRJobConfig;
 import org.apache.hadoop.mapreduce.v2.api.records.JobId;
 import org.apache.hadoop.mapreduce.v2.api.records.JobState;
-import org.apache.hadoop.mapreduce.v2.app2.AppContext;
-import org.apache.hadoop.mapreduce.v2.app2.MRAppMaster;
 import org.apache.hadoop.mapreduce.v2.app2.client.ClientService;
 import org.apache.hadoop.mapreduce.v2.app2.job.Job;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.JobFinishEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.impl.JobImpl;
-import org.apache.hadoop.mapreduce.v2.app2.rm.ContainerAllocator;
-import org.apache.hadoop.mapreduce.v2.app2.rm.ContainerAllocatorEvent;
+import org.apache.hadoop.mapreduce.v2.app2.rm.RMContainerRequestor;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.yarn.YarnException;
 import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
@@ -52,7 +46,6 @@ import org.apache.hadoop.yarn.api.records.ApplicationId;
 import org.apache.hadoop.yarn.event.EventHandler;
 import org.apache.hadoop.yarn.factories.RecordFactory;
 import org.apache.hadoop.yarn.factory.providers.RecordFactoryProvider;
-import org.apache.hadoop.yarn.service.AbstractService;
 import org.apache.hadoop.yarn.util.BuilderUtils;
 import org.junit.Test;
 
@@ -60,7 +53,7 @@ import org.junit.Test;
 /**
  * Make sure that the job staging directory clean up happens.
  */
- public class TestStagingCleanup extends TestCase {
+ public class TestStagingCleanup {
    
    private Configuration conf = new Configuration();
    private FileSystem fs;
@@ -68,7 +61,6 @@ import org.junit.Test;
    private Path stagingJobPath = new Path(stagingJobDir);
    private final static RecordFactory recordFactory = RecordFactoryProvider.
        getRecordFactory(null);
-   private static final Log LOG = LogFactory.getLog(TestStagingCleanup.class);
    
    @Test
    public void testDeletionofStaging() throws IOException {
@@ -138,7 +130,7 @@ import org.junit.Test;
           getDispatcher().getEventHandler(),
           getTaskAttemptListener(), getContext().getClock(),
           getCommitter(), isNewApiCommitter(),
-          currentUser.getUserName(), getContext());
+          currentUser.getUserName(), getTaskHeartbeatHandler(), getContext());
       ((AppContext) getContext()).getAllJobs().put(newJob.getID(), newJob);
 
       getDispatcher().register(JobFinishEvent.Type.class,
@@ -148,23 +140,15 @@ import org.junit.Test;
     }
 
     @Override
-    protected ContainerAllocator createContainerAllocator(
-        ClientService clientService, AppContext context) {
-      return new TestCleanupContainerAllocator();
+    protected RMContainerRequestor createRMContainerRequestor(
+        ClientService clientService, AppContext appContext) {
+      return new TestCleanupContainerRequestor(clientService, appContext);
     }
 
-    private class TestCleanupContainerAllocator extends AbstractService
-        implements ContainerAllocator {
-      private MRAppContainerAllocator allocator;
-
-      TestCleanupContainerAllocator() {
-        super(TestCleanupContainerAllocator.class.getName());
-        allocator = new MRAppContainerAllocator();
-      }
-
-      @Override
-      public void handle(ContainerAllocatorEvent event) {
-        allocator.handle(event);
+    private class TestCleanupContainerRequestor extends MRAppContainerRequestor {
+      public TestCleanupContainerRequestor(ClientService clientService,
+          AppContext context) {
+        super(clientService, context);
       }
 
       @Override

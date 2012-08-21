@@ -96,6 +96,7 @@ public class CompositeService extends AbstractService {
     for (int i = numOfServicesStarted; i >= 0; i--) {
       Service service = serviceList.get(i);
       try {
+        LOG.info("XXX: Stopping service: " + service);
         service.stop();
       } catch (Throwable t) {
         LOG.info("Error stopping " + service.getName(), t);

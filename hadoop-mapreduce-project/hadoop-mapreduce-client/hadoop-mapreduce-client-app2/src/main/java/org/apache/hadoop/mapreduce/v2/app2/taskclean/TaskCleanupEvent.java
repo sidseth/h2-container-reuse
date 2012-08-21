@@ -28,6 +28,7 @@ import org.apache.hadoop.yarn.event.AbstractEvent;
  *
  */
 public class TaskCleanupEvent extends AbstractEvent<TaskCleaner.EventType> {
+  // TODO XXX: Rename to TaskAttemptCleanupEvent ?
 
   // TODO XXX: Maybe include the containerId along with this event. Otherwise depend on events coming in from the Container to include TaskAttemptIds.
   private final TaskAttemptId attemptID;

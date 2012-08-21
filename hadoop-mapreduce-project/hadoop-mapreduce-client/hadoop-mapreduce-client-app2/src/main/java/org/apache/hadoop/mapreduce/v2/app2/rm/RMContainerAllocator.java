@@ -81,7 +81,7 @@ import org.apache.hadoop.yarn.util.RackResolver;
  * Allocates the container from the ResourceManager scheduler.
  */
 public class RMContainerAllocator extends AbstractService
-    implements EventHandler<AMSchedulerEvent> {
+    implements ContainerAllocator {
 
   static final Log LOG = LogFactory.getLog(RMContainerAllocator.class);
   
@@ -177,12 +177,12 @@ public class RMContainerAllocator extends AbstractService
 
   @SuppressWarnings("rawtypes")
   public RMContainerAllocator(RMContainerRequestor requestor,
-      AppContext appContext, Clock clock, EventHandler eventHandler) {
+      AppContext appContext) {
     super("RMContainerAllocator");
     this.requestor = requestor;
     this.appContext = appContext;
-    this.clock = clock;
-    this.eventHandler = eventHandler;
+    this.clock = appContext.getClock();
+    this.eventHandler = appContext.getEventHandler();
     ApplicationId appId = appContext.getApplicationID();
     // JobId should not be required here. 
     // Currently used for error notification, clc construction, etc. Should not be  

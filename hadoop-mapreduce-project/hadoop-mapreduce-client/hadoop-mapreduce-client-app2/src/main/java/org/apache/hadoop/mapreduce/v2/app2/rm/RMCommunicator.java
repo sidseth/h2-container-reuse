@@ -132,6 +132,7 @@ public abstract class RMCommunicator extends AbstractService  {
     return this.job.getProgress();
   }
 
+  // TODO XXX: Get rid of the dependencies on the ClientService.
   protected void register() {
     //Register
     InetSocketAddress serviceAddr = clientService.getBindAddress();

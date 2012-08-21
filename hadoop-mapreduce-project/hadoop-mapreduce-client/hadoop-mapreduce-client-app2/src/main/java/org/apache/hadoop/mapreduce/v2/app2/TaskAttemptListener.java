@@ -34,6 +34,8 @@ public interface TaskAttemptListener {
 
   void registerRunningJvm(WrappedJvmID jvmID, ContainerId containerId);
   
+  void registerTaskAttempt(TaskAttemptId attemptId, WrappedJvmID jvmId);
+  
   void unregisterRunningJvm(WrappedJvmID jvmID);
   
   void unregisterTaskAttempt(TaskAttemptId attemptID);

@@ -30,6 +30,7 @@ public enum TaskAttemptState {
   FAIL_IN_PROGRESS,
   SUCCEEDED,
   
+  /*
   // States in old implementation.
        //  NEW, 
   UNASSIGNED, 
@@ -44,4 +45,5 @@ public enum TaskAttemptState {
   KILL_CONTAINER_CLEANUP, 
   KILL_TASK_CLEANUP, 
        //  KILLED
+        */
 }

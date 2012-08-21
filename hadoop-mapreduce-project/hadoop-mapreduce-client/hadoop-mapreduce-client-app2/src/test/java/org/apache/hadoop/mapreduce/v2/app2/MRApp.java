@@ -23,6 +23,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.Map;
 
 import junit.framework.Assert;
 
@@ -35,6 +37,7 @@ import org.apache.hadoop.mapred.WrappedJvmID;
 import org.apache.hadoop.mapreduce.JobID;
 import org.apache.hadoop.mapreduce.MRJobConfig;
 import org.apache.hadoop.mapreduce.OutputCommitter;
+import org.apache.hadoop.mapreduce.TaskType;
 import org.apache.hadoop.mapreduce.TypeConverter;
 import org.apache.hadoop.mapreduce.jobhistory.ContainerHeartbeatHandler;
 import org.apache.hadoop.mapreduce.jobhistory.JobHistoryEvent;
@@ -49,9 +52,6 @@ import org.apache.hadoop.mapreduce.v2.api.records.TaskAttemptReport;
 import org.apache.hadoop.mapreduce.v2.api.records.TaskAttemptState;
 import org.apache.hadoop.mapreduce.v2.api.records.TaskReport;
 import org.apache.hadoop.mapreduce.v2.api.records.TaskState;
-import org.apache.hadoop.mapreduce.v2.app2.AppContext;
-import org.apache.hadoop.mapreduce.v2.app2.MRAppMaster;
-import org.apache.hadoop.mapreduce.v2.app2.TaskAttemptListener;
 import org.apache.hadoop.mapreduce.v2.app2.client.ClientService;
 import org.apache.hadoop.mapreduce.v2.app2.job.Job;
 import org.apache.hadoop.mapreduce.v2.app2.job.Task;
@@ -59,16 +59,27 @@ import org.apache.hadoop.mapreduce.v2.app2.job.TaskAttempt;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.JobEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.JobEventType;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.JobFinishEvent;
-import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptContainerAssignedEvent;
-import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptContainerLaunchedEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptEventType;
+import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptRemoteStartEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.impl.JobImpl;
 import org.apache.hadoop.mapreduce.v2.app2.launcher.ContainerLauncher;
-import org.apache.hadoop.mapreduce.v2.app2.launcher.ContainerLauncherEvent;
+import org.apache.hadoop.mapreduce.v2.app2.rm.AMSchedulerEvent;
+import org.apache.hadoop.mapreduce.v2.app2.rm.AMSchedulerTALaunchRequestEvent;
+import org.apache.hadoop.mapreduce.v2.app2.rm.AMSchedulerTAStopRequestEvent;
 import org.apache.hadoop.mapreduce.v2.app2.rm.ContainerAllocator;
-import org.apache.hadoop.mapreduce.v2.app2.rm.ContainerAllocatorEvent;
 import org.apache.hadoop.mapreduce.v2.app2.rm.NMCommunicatorEvent;
+import org.apache.hadoop.mapreduce.v2.app2.rm.RMCommunicatorContainerDeAllocateRequestEvent;
+import org.apache.hadoop.mapreduce.v2.app2.rm.RMCommunicatorEvent;
+import org.apache.hadoop.mapreduce.v2.app2.rm.RMContainerRequestor;
+import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainer;
+import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainerAssignTAEvent;
+import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainerEvent;
+import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainerEventLaunched;
+import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainerEventReleased;
+import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainerEventType;
+import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainerLaunchRequestEvent;
+import org.apache.hadoop.mapreduce.v2.app2.rm.container.AMContainerState;
 import org.apache.hadoop.mapreduce.v2.app2.taskclean.TaskCleaner;
 import org.apache.hadoop.mapreduce.v2.app2.taskclean.TaskCleanupEvent;
 import org.apache.hadoop.mapreduce.v2.util.MRApps;
@@ -80,10 +91,12 @@ import org.apache.hadoop.yarn.Clock;
 import org.apache.hadoop.yarn.ClusterInfo;
 import org.apache.hadoop.yarn.SystemClock;
 import org.apache.hadoop.yarn.YarnException;
+import org.apache.hadoop.yarn.api.records.ApplicationAccessType;
 import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
 import org.apache.hadoop.yarn.api.records.ApplicationId;
 import org.apache.hadoop.yarn.api.records.Container;
 import org.apache.hadoop.yarn.api.records.ContainerId;
+import org.apache.hadoop.yarn.api.records.ContainerStatus;
 import org.apache.hadoop.yarn.api.records.NodeId;
 import org.apache.hadoop.yarn.event.EventHandler;
 import org.apache.hadoop.yarn.factories.RecordFactory;
@@ -92,6 +105,7 @@ import org.apache.hadoop.yarn.service.Service;
 import org.apache.hadoop.yarn.state.StateMachine;
 import org.apache.hadoop.yarn.state.StateMachineFactory;
 import org.apache.hadoop.yarn.util.BuilderUtils;
+import org.apache.hadoop.yarn.util.Records;
 
 
 /**
@@ -137,28 +151,6 @@ public class MRApp extends MRAppMaster {
     this(maps, reduces, autoComplete, testName, cleanOnStart, 1);
   }
   
-  @Override
-  protected void downloadTokensAndSetupUGI(Configuration conf) {
-  }
-
-  private static ApplicationAttemptId getApplicationAttemptId(
-      ApplicationId applicationId, int startCount) {
-    ApplicationAttemptId applicationAttemptId =
-        recordFactory.newRecordInstance(ApplicationAttemptId.class);
-    applicationAttemptId.setApplicationId(applicationId);
-    applicationAttemptId.setAttemptId(startCount);
-    return applicationAttemptId;
-  }
-  
-  private static ContainerId getContainerId(ApplicationId applicationId,
-      int startCount) {
-    ApplicationAttemptId appAttemptId =
-        getApplicationAttemptId(applicationId, startCount);
-    ContainerId containerId =
-        BuilderUtils.newContainerId(appAttemptId, startCount);
-    return containerId;
-  }
-
   public MRApp(int maps, int reduces, boolean autoComplete, String testName,
       boolean cleanOnStart, int startCount) {
     this(maps, reduces, autoComplete, testName, cleanOnStart, startCount,
@@ -202,6 +194,8 @@ public class MRApp extends MRAppMaster {
     this.autoComplete = autoComplete;
   }
 
+  
+  
   @Override
   public void init(Configuration conf) {
     super.init(conf);
@@ -216,6 +210,8 @@ public class MRApp extends MRAppMaster {
       getContext().getClusterInfo().setMaxContainerCapability(
           BuilderUtils.newResource(10240));
     }
+    // XXX Any point doing this here. Otherwise move to an overridden createDispatcher()
+//    conf.setBoolean(Dispatcher.DISPATCHER_EXIT_ON_ERROR_KEY, false);
   }
 
   public Job submit(Configuration conf) throws Exception {
@@ -333,6 +329,28 @@ public class MRApp extends MRAppMaster {
   }
 
   @Override
+  protected void downloadTokensAndSetupUGI(Configuration conf) {
+  }
+
+  private static ApplicationAttemptId getApplicationAttemptId(
+      ApplicationId applicationId, int startCount) {
+    ApplicationAttemptId applicationAttemptId =
+        recordFactory.newRecordInstance(ApplicationAttemptId.class);
+    applicationAttemptId.setApplicationId(applicationId);
+    applicationAttemptId.setAttemptId(startCount);
+    return applicationAttemptId;
+  }
+  
+  private static ContainerId getContainerId(ApplicationId applicationId,
+      int startCount) {
+    ApplicationAttemptId appAttemptId =
+        getApplicationAttemptId(applicationId, startCount);
+    ContainerId containerId =
+        BuilderUtils.newContainerId(appAttemptId, startCount);
+    return containerId;
+  }
+  
+  @Override
   protected Job createJob(Configuration conf) {
     UserGroupInformation currentUser = null;
     try {
@@ -342,26 +360,31 @@ public class MRApp extends MRAppMaster {
     }
     Job newJob = new TestJob(getJobId(), getAttemptID(), conf, 
     		getDispatcher().getEventHandler(),
-            getTaskAttemptListener(), getContext().getClock(),
-            getCommitter(), isNewApiCommitter(),
-            currentUser.getUserName(), getContext());
+            getTaskAttemptListener(), getContext().getClock(), getCommitter(),
+            isNewApiCommitter(), currentUser.getUserName(),
+            getTaskHeartbeatHandler(), getContext());
     ((AppContext) getContext()).getAllJobs().put(newJob.getID(), newJob);
 
-    getDispatcher().register(JobFinishEvent.Type.class,
-        new EventHandler<JobFinishEvent>() {
-          @Override
-          public void handle(JobFinishEvent event) {
-            stop();
-          }
-        });
+    getDispatcher().register(JobFinishEvent.Type.class, new MRAppJobFinishHandler());
 
     return newJob;
+  }
+  
+  protected class MRAppJobFinishHandler extends JobFinishEventHandlerCR {
+    @Override
+    protected void exit() {
+    }
+    
+    @Override
+    protected void maybeSendJobEndNotification() {
+    }
   }
 
   @Override
   protected TaskAttemptListener createTaskAttemptListener(AppContext context,
       TaskHeartbeatHandler thh, ContainerHeartbeatHandler chh) {
     return new TaskAttemptListener(){
+
       @Override
       public InetSocketAddress getAddress() {
         return NetUtils.createSocketAddr("localhost:54321");
@@ -382,6 +405,50 @@ public class MRApp extends MRAppMaster {
         // TODO Auto-generated method stub
         
       }
+
+      @Override
+      public void registerTaskAttempt(TaskAttemptId attemptId,
+          WrappedJvmID jvmId) {
+        // TODO Auto-generated method stub
+        
+      }
+    };
+  }
+  
+  @Override
+  protected TaskHeartbeatHandler createTaskHeartbeatHandler(AppContext context,
+      Configuration conf) {
+    return new TaskHeartbeatHandler(context, maps) {
+
+      @Override
+      public void init(Configuration conf) {
+      }
+
+      @Override
+      public void start() {
+      }
+
+      @Override
+      public void stop() {
+      }
+    };
+  }
+
+  @Override
+  protected ContainerHeartbeatHandler createContainerHeartbeatHandler(
+      AppContext context, Configuration conf) {
+    return new ContainerHeartbeatHandler(context, 1) {
+      @Override
+      public void init(Configuration conf) {
+      }
+
+      @Override
+      public void start() {
+      }
+
+      @Override
+      public void stop() {
+      }
     };
   }
 
@@ -395,11 +462,17 @@ public class MRApp extends MRAppMaster {
     };
   }
   
+  
+  
   @Override
   protected ContainerLauncher createContainerLauncher(AppContext context) {
     return new MockContainerLauncher();
   }
 
+  // appAcls and attemptToContainerIdMap shared between various mocks.
+  private Map<ApplicationAccessType, String> appAcls = new HashMap<ApplicationAccessType, String>();
+  private Map<TaskAttemptId, ContainerId> attemptToContainerIdMap = new HashMap<TaskAttemptId, ContainerId>();
+  
   protected class MockContainerLauncher implements ContainerLauncher {
 
     //We are running locally so set the shuffle port to -1 
@@ -409,70 +482,154 @@ public class MRApp extends MRAppMaster {
     }
 
 //    @Override
-    public void handle(ContainerLauncherEvent event) {
+    public void handle(NMCommunicatorEvent event) {
       switch (event.getType()) {
-      case CONTAINER_REMOTE_LAUNCH:
-        getContext().getEventHandler().handle(
-            new TaskAttemptContainerLaunchedEvent(event.getTaskAttemptID(),
-                shufflePort));
+      case CONTAINER_LAUNCH_REQUEST:
+        LOG.info("XXX: Handling CONTAINER_LAUNCH_REQUEST for: " + event.getContainerId());
         
-        attemptLaunched(event.getTaskAttemptID());
-        break;
-      case CONTAINER_REMOTE_CLEANUP:
+        AMContainer amContainer = getContext().getContainer(event.getContainerId());
+        TaskAttemptId attemptIdForContainer = amContainer.getQueuedTaskAttempts().iterator().next();
+        // Container Launched.
         getContext().getEventHandler().handle(
-            new TaskAttemptEvent(event.getTaskAttemptID(),
-                TaskAttemptEventType.TA_CONTAINER_CLEANED));
+            new AMContainerEventLaunched(event.getContainerId(), shufflePort));
+        
+        // Simulate a TaskPull from the remote task.
+        getContext().getEventHandler().handle(
+            new AMContainerEvent(event.getContainerId(),
+                AMContainerEventType.C_PULL_TA));
+         
+        // Simulate a TaskAttemptStartedEvent to the TaskAtetmpt.
+        // Maybe simulate a completed task.
+        getContext().getEventHandler().handle(
+            new TaskAttemptRemoteStartEvent(attemptIdForContainer, event.getContainerId(), appAcls,
+                shufflePort));
+        attemptLaunched(attemptIdForContainer);
+
+        break;
+      case CONTAINER_STOP_REQUEST:
+        ContainerStatus cs = Records.newRecord(ContainerStatus.class);
+        cs.setContainerId(event.getContainerId());
+        getContext().getEventHandler().handle(new AMContainerEventReleased(cs));
+        break;
+      }
+    }
+  }
+
+  protected void attemptLaunched(TaskAttemptId attemptId) {
+    if (autoComplete) {
+      // send the done event
+      getContext().getEventHandler().handle(
+          new TaskAttemptEvent(attemptId, TaskAttemptEventType.TA_DONE));
+    }
+  }
+
+  @Override
+  protected RMContainerRequestor createRMContainerRequestor(
+      ClientService clientService, AppContext appContext) {
+    return new MRAppContainerRequestor(clientService, appContext);
+  }
+  
+  protected class MRAppContainerRequestor extends RMContainerRequestor {
+
+    int numReleaseRequests;
+    
+    public MRAppContainerRequestor(ClientService clientService,
+        AppContext context) {
+      super(clientService, context);
+    }
+    
+    @Override public void init(Configuration conf) {}
+    @Override public void start() {}
+    @Override public void stop() {}
+    //TODO XXX: getApplicationAcls, getJob
+    
+    @Override public void addContainerReq(ContainerRequest req) {}
+    @Override public void decContainerReq(ContainerRequest req) {}
+
+    public void handle(RMCommunicatorEvent rawEvent) {
+      LOG.info("XXX: MRAppContainerRequestor handling event of type:" + rawEvent.getType() + ", event: " + rawEvent);
+      switch (rawEvent.getType()) {
+      case CONTAINER_DEALLOCATE:
+        numReleaseRequests++;
+        ContainerStatus cs = Records.newRecord(ContainerStatus.class);
+        cs.setContainerId(((RMCommunicatorContainerDeAllocateRequestEvent)rawEvent).getContainerId());
+        getContext().getEventHandler().handle(new AMContainerEventReleased(cs));
+        break;
+      default:
+        LOG.warn("Invalid event of type: " + rawEvent.getType() + ", Event: "
+            + rawEvent);
         break;
       }
     }
 
-    @Override
-    public void handle(NMCommunicatorEvent event) {
-      // TODO Auto-generated method stub
-      
+    public int getNumReleaseRequests() {
+      return numReleaseRequests;
     }
   }
-
-  protected void attemptLaunched(TaskAttemptId attemptID) {
-    if (autoComplete) {
-      // send the done event
-      getContext().getEventHandler().handle(
-          new TaskAttemptEvent(attemptID,
-              TaskAttemptEventType.TA_DONE));
-    }
+ 
+  @Override
+  protected ContainerAllocator createAMScheduler(
+      RMContainerRequestor requestor, AppContext appContext) {
+    return new MRAppAMScheduler();    
   }
 
-//  @Override
-  protected ContainerAllocator createContainerAllocator(
-      ClientService clientService, final AppContext context) {
-    return new MRAppContainerAllocator();
-  }
-
-  protected class MRAppContainerAllocator implements ContainerAllocator {
+  protected class MRAppAMScheduler implements ContainerAllocator {
     private int containerCount;
-
-     @Override
-      public void handle(ContainerAllocatorEvent event) {
-        ContainerId cId = recordFactory.newRecordInstance(ContainerId.class);
+    
+    
+    @Override
+    public void handle(AMSchedulerEvent rawEvent) {
+      LOG.info("XXX: MRAppAMScheduler handling event of type:" + rawEvent.getType() + ", event: " + rawEvent);
+      switch (rawEvent.getType()) {
+      case S_TA_LAUNCH_REQUEST:
+        AMSchedulerTALaunchRequestEvent lEvent = (AMSchedulerTALaunchRequestEvent)rawEvent;
+        ContainerId cId = Records.newRecord(ContainerId.class);
         cId.setApplicationAttemptId(getContext().getApplicationAttemptId());
         cId.setId(containerCount++);
         NodeId nodeId = BuilderUtils.newNodeId(NM_HOST, NM_PORT);
         Container container = BuilderUtils.newContainer(cId, nodeId,
             NM_HOST + ":" + NM_HTTP_PORT, null, null, null);
+        
+        getContext().getAllContainers().addNewContainer(container);
+        getContext().getAllNodes().nodeSeen(nodeId);
+        
         JobID id = TypeConverter.fromYarn(applicationId);
         JobId jobId = TypeConverter.toYarn(id);
         getContext().getEventHandler().handle(new JobHistoryEvent(jobId, 
-            new NormalizedResourceEvent(
-                org.apache.hadoop.mapreduce.TaskType.REDUCE,
-            100)));
+            new NormalizedResourceEvent(TaskType.REDUCE, 100)));
         getContext().getEventHandler().handle(new JobHistoryEvent(jobId, 
-            new NormalizedResourceEvent(
-                org.apache.hadoop.mapreduce.TaskType.MAP,
-            100)));
+            new NormalizedResourceEvent(TaskType.MAP, 100)));
+        
+        attemptToContainerIdMap.put(lEvent.getAttemptID(), cId);
+        if (getContext().getContainer(cId).getState() == AMContainerState.ALLOCATED) {
+          LOG.info("XXX: Sending launch request for container: " + lEvent);
+          getContext().getEventHandler().handle(
+              new AMContainerLaunchRequestEvent(cId, lEvent, appAcls, jobId));
+        }
+        LOG.info("XXX: Assigning attempt [" + lEvent.getAttemptID() + "] to Container [" + cId + "]");
         getContext().getEventHandler().handle(
-            new TaskAttemptContainerAssignedEvent(event.getAttemptID(),
-                container, null));
+            new AMContainerAssignTAEvent(cId, lEvent.getAttemptID(), lEvent
+                .getRemoteTask()));
+
+        break;
+      case S_TA_STOP_REQUEST:
+        // Send out a Container_stop_request.
+        AMSchedulerTAStopRequestEvent stEvent = (AMSchedulerTAStopRequestEvent) rawEvent;
+        getContext().getEventHandler().handle(
+            new AMContainerEvent(attemptToContainerIdMap.get(stEvent
+                .getAttemptID()), AMContainerEventType.C_STOP_REQUEST));
+
+        break;
+      case S_TA_SUCCEEDED:
+        break;
+      case S_CONTAINERS_ALLOCATED:
+        break;
+      case S_CONTAINER_COMPLETED:
+        break;
+      default:
+          break;
       }
+    }
   }
 
   @Override
@@ -481,9 +638,11 @@ public class MRApp extends MRAppMaster {
       @Override
       public void handle(TaskCleanupEvent event) {
         //send the cleanup done event
-        getContext().getEventHandler().handle(
-            new TaskAttemptEvent(event.getAttemptID(),
-                TaskAttemptEventType.TA_CLEANUP_DONE));
+//        getContext().getEventHandler().handle(
+//            new TaskAttemptEvent(event.getAttemptID(),
+//                TaskAttemptEventType.TA_CLEANUP_DONE));
+        
+        // TODO XXX: Kindof equivalent to saying the container is complete / released.
       }
     };
   }
@@ -536,15 +695,15 @@ public class MRApp extends MRAppMaster {
     @SuppressWarnings("rawtypes")
     public TestJob(JobId jobId, ApplicationAttemptId applicationAttemptId,
         Configuration conf, EventHandler eventHandler,
-        TaskAttemptListener taskAttemptListener, Clock clock,
-        OutputCommitter committer, boolean newApiCommitter, String user, 
-        AppContext appContext) {
+        TaskAttemptListener taskAttemptListener,  Clock clock,
+        OutputCommitter committer, boolean newApiCommitter, String user,
+        TaskHeartbeatHandler thh, AppContext appContext) {
       super(jobId, getApplicationAttemptId(applicationId, getStartCount()),
           conf, eventHandler, taskAttemptListener,
           new JobTokenSecretManager(), new Credentials(), clock,
           getCompletedTaskFromPreviousRun(), metrics, committer,
           newApiCommitter, user, System.currentTimeMillis(), getAllAMInfos(),
-          null, appContext);
+          thh, appContext);
 
       // This "this leak" is okay because the retained pointer is in an
       //  instance variable.

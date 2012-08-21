@@ -64,7 +64,6 @@ import org.apache.hadoop.mapreduce.v2.app2.job.event.JobEventType;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.JobMapTaskRescheduledEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.JobTaskAttemptCompletedEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.JobTaskEvent;
-import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptEventKillRequest;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptEventType;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskAttemptScheduleEvent;
@@ -72,7 +71,7 @@ import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskEvent;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskEventType;
 import org.apache.hadoop.mapreduce.v2.app2.job.event.TaskTAttemptEvent;
 import org.apache.hadoop.mapreduce.v2.app2.metrics.MRAppMetrics;
-import org.apache.hadoop.mapreduce.v2.app2.rm.ContainerFailedEvent;
+import org.apache.hadoop.mapreduce.v2.app2.rm.AMSchedulerTAStopRequestEvent;
 import org.apache.hadoop.mapreduce.v2.util.MRBuilderUtils;
 import org.apache.hadoop.security.Credentials;
 import org.apache.hadoop.security.token.Token;
@@ -498,15 +497,14 @@ public abstract class TaskImpl implements Task, EventHandler<TaskEvent> {
     TaskAttempt result = null;
     for (TaskAttempt at : attempts.values()) {
       switch (at.getState()) {
-      
+
       // ignore all failed task attempts
-      case FAIL_CONTAINER_CLEANUP: 
-      case FAIL_TASK_CLEANUP: 
-      case FAILED: 
-      case KILL_CONTAINER_CLEANUP: 
-      case KILL_TASK_CLEANUP: 
+      case FAIL_IN_PROGRESS:
+      case FAILED:
+      case KILL_IN_PROGRESS:
       case KILLED:
-        continue;      
+        continue;
+      default:
       }      
       if (result == null) {
         result = at; //The first time around
@@ -598,6 +596,8 @@ public abstract class TaskImpl implements Task, EventHandler<TaskEvent> {
       LOG.debug("Processing " + event.getTaskID() + " of type "
           + event.getType());
     }
+    LOG.debug("XXX: Processing " + event.getTaskID() + " of type "
+        + event.getType() + " while in state: " + getState());
     try {
       writeLock.lock();
       TaskState oldState = getState();
@@ -851,8 +851,14 @@ public abstract class TaskImpl implements Task, EventHandler<TaskEvent> {
       TaskAttempt attempt = task.attempts.get(castEvent.getTaskAttemptID());
       if (attempt.getAssignedContainerMgrAddress() != null) {
         //container was assigned
-        task.eventHandler.handle(new ContainerFailedEvent(attempt.getID(), 
-            attempt.getAssignedContainerMgrAddress()));
+        // TOOD XXX: What else changes other than this one transition.
+        // TODO XXX: Get rid of all the old events, types, etc temporarily.
+        
+        // This can originate from TOO_MANY_FETCH_FAILURES -> the Container may still be running. Ask the scheduler to KILL it.
+        // TODO XXX ZZZ: Send out a TA_STOP_REQUEST. or the Task sends this out directly, considering the TaskAttempt may already have completed.
+//        task.eventHandler.handle(new ContainerFailedEvent(attempt.getID(), 
+//            attempt.getAssignedContainerMgrAddress()));
+        task.eventHandler.handle(new AMSchedulerTAStopRequestEvent(castEvent.getTaskAttemptID(), true));
       }
       
       task.finishedAttempts++;

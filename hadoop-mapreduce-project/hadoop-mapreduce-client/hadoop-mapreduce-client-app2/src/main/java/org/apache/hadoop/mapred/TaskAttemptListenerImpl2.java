@@ -113,6 +113,7 @@ public class TaskAttemptListenerImpl2 extends CompositeService
 
   @Override
   public void start() {
+    LOG.info("XXX: Starting TAL2");
     startRpcServer();
     super.start();
   }
@@ -443,6 +444,7 @@ public class TaskAttemptListenerImpl2 extends CompositeService
       } else {
         TaskAttemptId yTaskAttemptId = TypeConverter.toYarn(task.getTaskID());
         // TODO XXX: Generate this event properly - proper params etc etc etc.s
+        // TODO XXX: Fix the hardcoded port.
         context.getEventHandler().handle(new TaskAttemptRemoteStartEvent(yTaskAttemptId, containerId, null, 8080));
         LOG.info("JVM with ID: " + jvmId + " given task: " + task.getTaskID());
         registerTaskAttempt(yTaskAttemptId, wJvmID);
